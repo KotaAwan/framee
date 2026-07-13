@@ -1,0 +1,367 @@
+# 03-02 Dynamic Form
+
+## Purpose
+
+The Dynamic Form is the **metadata-driven form rendering system** in Framee's frontend. Given a DocType name and a record ID (or `new`), it fetches the DocType's field schema from the Metadata API and renders a fully functional form — with appropriate input controls, client-side validation via Zod, layout sections, conditional visibility, and submission handling — without any DocType-specific code.
+
+It is the primary interface through which users create and edit records in the ERP system.
+
+---
+
+## Goals
+
+1. Render a complete, interactive form for any DocType using only its metadata definition.
+2. Use **React Hook Form** for performant, uncontrolled form state management.
+3. Use **Zod** for schema-based validation derived from DocField metadata.
+4. Use **Tailwind CSS** for all layout and styling — no inline styles.
+5. Use **shadcn/ui** primitive components as the base input controls.
+6. Enforce client-side validation and map server-side validation errors (422) back to fields.
+7. Respect field-level permissions: hide non-readable fields, disable read-only fields.
+8. Support conditional field visibility (`depends_on`) with real-time re-evaluation.
+9. Render child table fields (Table type) as inline editable grids.
+10. Display workflow state badge and transition buttons for submittable DocTypes.
+11. Translate all field labels via `useTranslation()`.
+
+---
+
+## Scope
+
+### In Scope
+- Metadata-driven form layout (sections, columns, tabs)
+- React Hook Form integration for all field types
+- Zod schema generation from DocField metadata
+- All DocField types with appropriate shadcn/ui + Tailwind input controls
+- Link field with autocomplete (TanStack-powered dropdown list)
+- Child table (Table DocField) as inline editable grid
+- Conditional field visibility (`depends_on`)
+- Form submission — create (`POST`) and update (`PUT`)
+- Server-side validation error mapping (422 → field errors)
+- Permission-aware rendering (hidden fields, read-only fields)
+- Workflow state badge and transition buttons
+- Dirty state detection (unsaved changes warning)
+- i18n translation for all labels via `useTranslation()`
+- Loading skeleton while metadata and record load
+- AdminLTE-inspired card-based form layout
+
+### Out of Scope
+- Report generation (future Report Engine)
+- Bulk editing (future feature)
+- Offline drafts (future PWA)
+- Custom plugin field renderers (future plugin extension)
+
+---
+
+## Functional Requirements
+
+### FR-001 Metadata-Driven Rendering
+- Fetches `GET /api/v1/meta/doctype/{name}` for the field schema.
+- Fields rendered in `sort_order` sequence.
+- Zero DocType-specific code.
+
+### FR-002 React Hook Form Integration
+- All form fields are registered with `useForm()` from React Hook Form.
+- `FormField.jsx` uses `Controller` for custom inputs (Select, Link, Date, etc.).
+- Form state (dirty, valid, errors) is managed by RHF — no separate state.
+- `handleSubmit` runs Zod validation before calling the API.
+
+### FR-003 Zod Schema Generation
+- On metadata load, a Zod schema is dynamically constructed from DocField definitions:
+
+| DocField Config | Zod Rule |
+|-----------------|---------|
+| `is_required = 1` | `.min(1, 'Field is required')` |
+| `fieldtype = Int` | `z.number().int()` |
+| `fieldtype = Float / Currency` | `z.number()` |
+| `fieldtype = Date` | `z.string().regex(...)` |
+| `fieldtype = Select` | `z.enum([...options])` |
+| `max_length` | `z.string().max(n)` |
+| `min_value / max_value` | `z.number().min(n).max(n)` |
+| `is_required = 0` | `.optional().nullable()` |
+
+- Zod is resolved via `zodResolver` from `@hookform/resolvers/zod`.
+
+### FR-004 Field Type Rendering
+
+| DocField Type | shadcn/ui + Tailwind Component |
+|---------------|-------------------------------|
+| Data | `<Input type="text" />` |
+| Int | `<Input type="number" step="1" />` |
+| Float | `<Input type="number" step="any" />` |
+| Currency | Currency `<Input>` with locale prefix |
+| Date | Date picker (shadcn/ui Popover + Calendar) |
+| Datetime | Date + time picker |
+| Time | Time picker |
+| Text | `<Textarea />` |
+| Long Text | Rich textarea (lazily loaded) |
+| HTML | Read-only HTML preview block |
+| Select | `<Select>` (shadcn/ui) with options from metadata |
+| Link | Autocomplete `<Input>` with search dropdown |
+| Check | `<Checkbox />` |
+| Attach | File upload button |
+| Attach Image | Image upload with preview |
+| Table | Inline child table grid |
+| Section Break | `<h3>` heading + `<hr>` divider |
+| Column Break | Grid column advance |
+| Password | `<Input type="password" />` |
+
+### FR-005 Section and Column Layout
+- Section Break fields create labeled card sections using Tailwind card styling.
+- Fields within a section render in a Tailwind CSS grid (`grid grid-cols-12 gap-4`).
+- Each field's `column_width` maps to `col-span-{n}`.
+- On mobile (`< md:`), all fields use `col-span-12` (full width) regardless of `column_width`.
+
+### FR-006 Conditional Visibility
+- Fields with `depends_on` expression are watched via RHF `watch()`.
+- Expression format: `{fieldname} == 'value'` or `{fieldname} != 'value'`.
+- Hidden fields are not rendered in the DOM and are excluded from the submission payload.
+- RHF's `unregister` is called when a field is hidden to remove it from validation.
+
+### FR-007 Link Field Autocomplete
+- Sends `GET /api/v1/doc/{LinkedDocType}?search={query}&fields={search_fields}` (debounced 300ms).
+- Results rendered in a dropdown below the input using a `<Combobox>` pattern.
+- Stored value: the linked record's `id`.
+- Displayed value: the linked record's `title_field`.
+
+### FR-008 Child Table (Table Field)
+- Rendered as an inline editable grid using TanStack Table.
+- Columns = child DocType's `in_list_view` fields.
+- Users can add/edit rows inline and delete rows.
+- Child records submitted as a nested array in the parent form payload.
+
+### FR-009 Form Submission
+- **Create**: `POST /api/v1/doc/{DocType}`
+- **Update**: `PUT /api/v1/doc/{DocType}/{id}`
+- On success: success Toast → redirect to list (`/doctype/{doctype}`) for create, or stay on form for update.
+- On 422: map `error.fields` to RHF `setError(fieldname, { message })`.
+- On 403: show "Access Denied" modal.
+- On 500: show error Toast.
+
+### FR-010 i18n Labels
+- All field labels: `useTranslation(field.label)`.
+- Section labels: `useTranslation(section.label)`.
+- Toolbar buttons (Save, Cancel, Delete, Submit): `useTranslation('Save')` etc.
+
+### FR-011 Workflow Integration
+- For submittable DocTypes:
+  - Workflow state badge shown below the page title (colored by `state.style`).
+  - Available transition buttons in the Toolbar (filtered by user role).
+  - A comment modal appears if `require_comment = true`.
+  - Workflow history timeline shown in a collapsible section at the bottom.
+
+---
+
+## Architecture
+
+```
+pages/document/[doctype]/[name].js
+  │
+  ├── withAuth HOC
+  ├── AppLayout (Sidebar, Header, Breadcrumb, Toolbar)
+  │
+  └── DynamicForm (components/dynamic/DynamicForm.jsx)
+      │
+      ├── useDocType(doctype)          → metadata
+      ├── useForm(doctype, name)       → record data
+      ├── usePermissions(doctype)      → readable/writable fields
+      │
+      ├── Build Zod schema from metadata
+      ├── Setup React Hook Form with zodResolver
+      │
+      ├── FormLayout
+      │   └── For each Section Break:
+      │       <Card className="mb-4">
+      │         <CardHeader>{t(section.label)}</CardHeader>
+      │         <CardContent>
+      │           <div className="grid grid-cols-12 gap-4">
+      │             For each field in section:
+      │               <FormField /> (col-span-{column_width})
+      │           </div>
+      │         </CardContent>
+      │       </Card>
+      │
+      ├── FormField.jsx
+      │   └── Switch on fieldtype → correct input component
+      │
+      └── Workflow section (if is_submittable)
+          ├── WorkflowBadge
+          ├── WorkflowTransitionButtons (in Toolbar)
+          └── WorkflowHistory (collapsible)
+```
+
+---
+
+## Database Design
+
+_Not applicable. The Dynamic Form is a frontend component._
+
+---
+
+## API Design
+
+### APIs Called by Dynamic Form
+
+| API | Purpose |
+|-----|---------|
+| `GET /api/v1/meta/doctype/{name}` | Load field schema |
+| `GET /api/v1/doc/{DocType}/{id}` | Load existing record |
+| `POST /api/v1/doc/{DocType}` | Create new record |
+| `PUT /api/v1/doc/{DocType}/{id}` | Update record |
+| `DELETE /api/v1/doc/{DocType}/{id}` | Delete record |
+| `GET /api/v1/doc/{LinkedDocType}?search={q}` | Link field autocomplete |
+| `GET /api/v1/doc/{DocType}/{id}/workflow` | Get workflow state + transitions |
+| `POST /api/v1/doc/{DocType}/{id}/workflow/transition` | Execute transition |
+
+---
+
+## UI Behaviour
+
+### Form Layout (AdminLTE Card Style)
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ [← Back to List]  Customer Name               [Draft ●]        │
+│                                                                │
+│ Toolbar: [💾 Save]  [✕ Cancel]  [🗑 Delete]  [✓ Submit]       │
+├────────────────────────────────────────────────────────────────┤
+│ ┌── Basic Information ──────────────────────────────────────┐  │
+│ │  Customer Name *          │  Customer Type *               │  │
+│ │  [_____________________]  │  [Select _______________▾]    │  │
+│ │                                                           │  │
+│ │  Description                                              │  │
+│ │  [__________________________________________________]     │  │
+│ └───────────────────────────────────────────────────────────┘  │
+│                                                                │
+│ ┌── Contact Details ────────────────────────────────────────┐  │
+│ │  Phone          │  Email            │  Website            │  │
+│ │  [___________]  │  [_____________]  │  [_______________]  │  │
+│ └───────────────────────────────────────────────────────────┘  │
+│                                                                │
+│ ┌── Workflow History ─────────────────────────────────────▾┐  │
+│ │  Jul 13 - John: Draft → Pending Review (Submitted)        │  │
+│ └───────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Validation Feedback
+- Required fields: red asterisk `*` in label.
+- Error message: red text (`text-red-500 text-sm`) directly below the field input.
+- On submit with errors: form scrolls to the first error field.
+
+### Loading States
+- Metadata loading: card skeleton with gray pulsing blocks matching section layout.
+- Record loading: inputs replaced with skeleton lines.
+- Saving: Save button shows Lucide `Loader2` spinning icon, is disabled.
+
+### Dirty State Warning
+- RHF's `formState.isDirty` is used.
+- On Next.js `router.beforePopState` event: if dirty, show browser `confirm()` dialog.
+- Cleared after successful save or explicit cancel.
+
+---
+
+## Configuration
+
+| Config | Default | Description |
+|--------|---------|-------------|
+| `FORM_AUTOSAVE_ENABLED` | `false` | Auto-save on field blur |
+| `FORM_AUTOSAVE_DEBOUNCE_MS` | `2000` | Auto-save debounce |
+| `LINK_SEARCH_DEBOUNCE_MS` | `300` | Link autocomplete debounce |
+| `LINK_SEARCH_MIN_CHARS` | `2` | Min chars before search |
+| `LINK_RESULTS_LIMIT` | `10` | Max autocomplete results |
+
+---
+
+## Validation Rules
+
+### Client-Side (Zod)
+- Required fields: error if empty on submit.
+- Type validation: Zod coerces and validates per fieldtype.
+- Select: enum validation — only options values accepted.
+- Link: RHF stores the linked ID; Zod validates it is a non-empty string if required.
+
+### Server-Side Error Mapping
+- 422 response: `error.fields` → `{ fieldname: errorMessage }`.
+- Each error is applied via RHF `setError(fieldname, { message })`.
+- Field errors display below inputs.
+- Fields not in `error.fields` have errors cleared.
+
+---
+
+## Security
+
+- Form payloads are JSON — no raw HTML form POSTs.
+- File uploads go to `/api/v1/upload` with file type + size validation.
+- Read-only and hidden fields are excluded from the submission payload by RHF `unregister`.
+- HTML content in Long Text / HTML fields is sanitized with `DOMPurify` before display.
+- `tenant_id` is never in the form — it is injected by the backend from the JWT.
+
+---
+
+## Events
+
+### Frontend State Events
+- RHF `formState.isDirty` — tracks unsaved changes.
+- RHF `formState.errors` — tracks validation errors.
+- Zustand `ui.store` — manages Save loading state and Toast dispatch.
+
+---
+
+## Performance
+
+### React Hook Form
+- Uncontrolled inputs: minimal re-renders (only watched fields re-render on change).
+- `watch()` is used only for `depends_on` evaluation — not globally.
+
+### Zod Schema
+- Schema is constructed once when metadata loads and memoized with `useMemo`.
+- Re-construction only occurs if metadata changes (extremely rare).
+
+### Link Field Debouncing
+- 300ms debounce prevents excessive API calls while typing.
+- Results are cached in component state for the current form session.
+
+### Lazy Loading
+- Rich text editor for Long Text fields: `next/dynamic` with `ssr: false`.
+- Child table TanStack Table: dynamically imported when a Table field is detected.
+
+---
+
+## Future Improvements
+
+- **Auto-Save** — Save draft to a temp record at intervals.
+- **Form Versioning** — Compare historical field values.
+- **Split-Screen** — Parent + child record side-by-side.
+- **Custom Field Renderers** — Plugins register custom input components for specific fieldtypes.
+- **Collaborative Editing** — Conflict detection for simultaneous edits.
+- **Print Layout** — Print-optimized form view for PDF generation.
+
+---
+
+## Acceptance Criteria
+
+- [ ] Opening `/document/Customer/new` renders all fields from Customer metadata in correct order.
+- [ ] Opening `/document/Customer/{id}` pre-fills all fields with the correct record values.
+- [ ] Submitting with a missing required field shows a Zod validation error below the field.
+- [ ] Submitting with an invalid Select value shows a Zod validation error.
+- [ ] A Section Break creates a visible labeled card section.
+- [ ] A field with `depends_on` hides/shows correctly as the referenced field value changes.
+- [ ] A Link field autocomplete shows results from the linked DocType on typing (min 2 chars).
+- [ ] A child Table field renders rows with the child DocType's `in_list_view` columns.
+- [ ] Adding a row and saving includes the new row in the payload.
+- [ ] A read-only field is visible but disabled — not submitted.
+- [ ] A hidden field (by permission) is not in the DOM.
+- [ ] A 422 server response maps each `error.fields` entry to the correct form field error message.
+- [ ] After successful save, a success Toast appears.
+- [ ] Navigating away from a dirty form triggers the browser confirmation dialog.
+- [ ] All field labels are translated when the user language is not English.
+- [ ] The workflow state badge updates after a successful transition.
+- [ ] Save button shows a spinner and is disabled during submission.
+
+---
+
+## Notes
+
+- **React Hook Form + Zod is the definitive form layer.** No other form state management is used. Component state (`useState`) is used only for UI micro-state (dropdown open/close), never for form field values.
+- **Zod schema is generated from metadata at runtime.** This is the key architectural move: the validation schema is not hand-written per DocType. It is derived from `is_required`, `fieldtype`, `max_length`, `options`, etc.
+- **FormField.jsx is the critical switch.** It receives a `field` metadata object and renders the correct input component. New field type support = add a case to this switch.
+- **shadcn/ui components are customized**. The `Input`, `Select`, `Checkbox`, `Textarea` etc. from shadcn/ui are styled with the Framee design system's Tailwind tokens — they are not used as-is from shadcn defaults.
