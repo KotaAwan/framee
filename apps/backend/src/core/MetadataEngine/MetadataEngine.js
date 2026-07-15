@@ -1,6 +1,7 @@
 import Container from '../Container.js';
 import { logger } from '../../utils/logger.js';
 import { NotFoundError } from '../../utils/errors.js';
+import { config } from '../../config/env.js';
 
 const CACHE_PREFIX = 'framee:meta';
 const CACHE_TTL = 3600; // 1 hour
@@ -47,9 +48,13 @@ class MetadataEngine {
 
     logger.debug(`Metadata Cache MISS for ${name} (Tenant: ${tenantId}). Loading from DB...`);
 
+    const SYSTEM_TENANT = config.app.systemTenantId;
+    const isSystemDocType = name.startsWith('sys_');
+    const queryTenantId = isSystemDocType ? SYSTEM_TENANT : tenantId;
+
     // 2. Fetch from DB
     // Fetch DocType
-    const doctype = await this.dbEngine.query('sys_doctype', tenantId)
+    const doctype = await this.dbEngine.query('sys_doctype', queryTenantId)
       .where({ name, is_active: true })
       .first();
 
@@ -58,13 +63,20 @@ class MetadataEngine {
     }
 
     // Fetch Fields
-    const fields = await this.dbEngine.query('sys_docfield', tenantId, { includeDeleted: true })
+    const fields = await this.dbEngine.query('sys_docfield', queryTenantId, { includeDeleted: true })
       .where({ doctype_id: doctype.id })
       .orderBy('sort_order', 'asc');
 
     const metadata = {
       ...doctype,
-      fields: fields || []
+      fields: (fields || []).map(f => {
+        if (f.options && typeof f.options === 'string') {
+          if (f.options.includes('\n')) f.options = f.options.split('\n').map(s=>s.trim()).filter(Boolean);
+          else if (f.options.includes(',')) f.options = f.options.split(',').map(s=>s.trim()).filter(Boolean);
+          else f.options = [f.options];
+        }
+        return f;
+      })
     };
 
     // 3. Populate Cache
@@ -101,8 +113,12 @@ class MetadataEngine {
     const cachedList = await this.cacheEngine.get(listCacheKey);
     if (cachedList) return cachedList;
 
-    const doctypes = await this.dbEngine.query('sys_doctype', tenantId)
-      .where({ is_active: true })
+    const SYSTEM_TENANT = config.app.systemTenantId;
+    
+    // Fetch both system doctypes and tenant-specific doctypes
+    const doctypes = await this.dbEngine.getRawConnection()('sys_doctype')
+      .whereIn('tenant_id', [SYSTEM_TENANT, tenantId])
+      .where({ is_active: true, is_deleted: false })
       .select('id', 'name', 'label', 'module_id', 'is_submittable');
 
     await this.cacheEngine.set(listCacheKey, doctypes, CACHE_TTL);

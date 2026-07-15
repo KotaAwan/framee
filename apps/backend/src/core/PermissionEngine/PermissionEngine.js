@@ -26,6 +26,14 @@ class PermissionEngine {
    * This flattens roles and merges them additively.
    */
   async _compilePermissions(userId, tenantId) {
+    // 0. Check if user is system user
+    const user = await this.dbEngine.query('sys_user', tenantId)
+      .where({ id: userId }).first();
+
+    if (user && user.is_system_user) {
+      return { isSystemManager: true, doctypes: {} };
+    }
+
     // 1. Get user roles
     const userRoles = await this.dbEngine.query('sys_user_role', tenantId, { includeDeleted: true })
       .where({ user_id: userId })

@@ -1,41 +1,34 @@
-import "@/styles/globals.css";
-import { AppLayout } from "@/components/layout/AppLayout";
-import { ThemeProvider } from "next-themes";
-import { useAuthStore } from "@/store/auth.store";
-import { useIdleTimeout } from "@/hooks/useIdleTimeout";
-import { LockScreen } from "@/components/auth/LockScreen";
-import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from 'react';
+import '../styles/globals.css';
+import AppLayout from '../components/layout/AppLayout';
+import { useRouter } from 'next/router';
 
 export default function App({ Component, pageProps }) {
-  // Use the layout defined at the page level, if available
-  const getLayout = Component.getLayout || ((page) => <AppLayout>{page}</AppLayout>);
-  
-  const { isLocked, isAuthenticated } = useAuthStore();
   const router = useRouter();
-  const [isMounted, setIsMounted] = useState(false);
+  const [mounted, setMounted] = useState(false);
   
+  // Public routes that don't need AppLayout
+  const publicRoutes = ['/login', '/forgot-password', '/reset-password'];
+  const isPublicRoute = publicRoutes.includes(router.pathname);
+
   useEffect(() => {
-    setIsMounted(true);
+    // Avoid synchronous setState in effect
+    setTimeout(() => {
+      setMounted(true);
+    }, 0);
+    // Setup default theme
+    document.documentElement.setAttribute('data-theme', 'light');
   }, []);
 
-  useEffect(() => {
-    // Hanya redirect setelah komponen di-mount untuk mencegah hydration mismatch
-    if (isMounted && !isAuthenticated && router.pathname !== "/login") {
-      router.push("/login");
-    }
-  }, [isMounted, isAuthenticated, router.pathname]);
-  
-  // Initialize Idle Timeout (30 minutes)
-  useIdleTimeout(30 * 60 * 1000);
+  if (!mounted) return null; // Prevent hydration mismatch
 
-  // Mencegah rendering sampai status otentikasi dipastikan (kecuali halaman login)
-  if (!isMounted) return null;
-  if (!isAuthenticated && router.pathname !== "/login") return null;
+  if (isPublicRoute) {
+    return <Component {...pageProps} />;
+  }
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      {isLocked ? <LockScreen /> : getLayout(<Component {...pageProps} />)}
-    </ThemeProvider>
+    <AppLayout>
+      <Component {...pageProps} />
+    </AppLayout>
   );
 }

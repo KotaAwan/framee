@@ -1,30 +1,50 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import apiClient from '../lib/api.client';
 
 export const useAuthStore = create(
   persist(
-    (set) => ({
-      tenantId: null,
-      userId: null,
-      token: null,
-      email: null,
-      fullName: null,
-      avatarUrl: null,
+    (set, get) => ({
+      user: null,
+      accessToken: null,
+      refreshToken: null,
       isAuthenticated: false,
       isLocked: false,
-      pinFailedAttempts: 0,
       
-      login: (tenantId, userId, email, token) => set({ tenantId, userId, email, token, isAuthenticated: true, isLocked: false, pinFailedAttempts: 0 }),
-      logout: () => set({ tenantId: null, userId: null, email: null, fullName: null, avatarUrl: null, token: null, isAuthenticated: false, isLocked: false, pinFailedAttempts: 0 }),
+      login: async (email, password) => {
+        const response = await apiClient.post('/api/v1/auth/login', { email, password });
+        const { token, refresh_token, user } = response.data.data;
+        
+        set({
+          user,
+          accessToken: token,
+          refreshToken: refresh_token,
+          isAuthenticated: true,
+          isLocked: false
+        });
+      },
       
-      updateProfile: (fullName, avatarUrl) => set((state) => ({ 
-        fullName: fullName !== undefined ? fullName : state.fullName,
-        avatarUrl: avatarUrl !== undefined ? avatarUrl : state.avatarUrl
+      logout: async () => {
+        const { refreshToken } = get();
+        try {
+          if (refreshToken) {
+            await apiClient.post('/api/v1/auth/logout', { refresh_token: refreshToken });
+          }
+        } catch (e) {
+          console.error('Logout error', e);
+        } finally {
+          set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false, isLocked: false });
+          window.location.href = '/login';
+        }
+      },
+      
+      setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
+      setUser: (user) => set({ user }),
+      updateProfile: (fullName, avatarUrl) => set((state) => ({
+        user: state.user ? { ...state.user, fullName, avatarUrl } : null
       })),
-
       lockSession: () => set({ isLocked: true }),
-      unlockSession: () => set({ isLocked: false, pinFailedAttempts: 0 }),
-      incrementPinFailedAttempt: () => set((state) => ({ pinFailedAttempts: state.pinFailedAttempts + 1 })),
+      unlockSession: () => set({ isLocked: false })
     }),
     {
       name: 'framee-auth-storage',

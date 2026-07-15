@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 
 /**
@@ -9,7 +9,7 @@ export function useIdleTimeout(timeoutMs = 5 * 60 * 1000) {
   const { isAuthenticated, isLocked, lockSession } = useAuthStore();
   const timeoutRef = useRef(null);
 
-  const handleActivity = () => {
+  const handleActivity = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     
     // Only reset timer if user is authenticated and not already locked
@@ -18,7 +18,7 @@ export function useIdleTimeout(timeoutMs = 5 * 60 * 1000) {
         lockSession();
       }, timeoutMs);
     }
-  };
+  }, [isAuthenticated, isLocked, lockSession, timeoutMs]);
 
   useEffect(() => {
     // Only bind events if user is authenticated and not locked

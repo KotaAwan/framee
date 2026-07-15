@@ -47,7 +47,7 @@ class LifecycleEngine {
     // 3. Status Transition Matrix & DocType Config
     switch (action) {
       case 'update':
-        if (status === 'Locked' || status === 'Cancelled' || status === 'Archived') {
+        if (['Locked', 'Cancelled', 'Archived', 'Approved', 'Rejected'].includes(status)) {
           throw new ValidationError(`Cannot update document in status: ${status}.`);
         }
         if (status === 'Submitted' && !meta.allow_edit_after_submit) {

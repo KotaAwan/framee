@@ -101,46 +101,46 @@ The framework provides a standardized foundation that can power any vertical ERP
 Framee is structured as a layered architecture:
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                   Frontend (NextJS)                   │
-│        Dynamic Forms | Dynamic Lists | Layouts        │
-└──────────────────────────┬───────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                   Frontend (NextJS)                    │
+│        Dynamic Forms | Dynamic Lists | Layouts         │
+└──────────────────────────┬─────────────────────────────┘
                            │ REST API
-┌──────────────────────────▼───────────────────────────┐
+┌──────────────────────────▼─────────────────────────────┐
 │                  API Engine (ExpressJS)                │
-│         Auth | Routing | Rate Limit | Tenant Ctx      │
-└──────────────────────────┬───────────────────────────┘
+│         Auth | Routing | Rate Limit | Tenant Ctx       │
+└──────────────────────────┬─────────────────────────────┘
                            │
-┌──────────────────────────▼───────────────────────────┐
+┌──────────────────────────▼─────────────────────────────┐
 │                    Core Engines                        │
-│  Metadata  │  CRUD  │  Cache  │  Event  │  API        │
+│  Metadata  │  CRUD  │  Cache  │  Event  │  API         │
 │  Permission │ Workflow │ DocLifecycle │ Audit │ Version│
-└──────────────────────────┬───────────────────────────┘
+└──────────────────────────┬─────────────────────────────┘
                            │
-┌──────────────────────────▼───────────────────────────┐
+┌──────────────────────────▼─────────────────────────────┐
 │               Database Layer (MySQL)                   │
-│          Row-Level Tenant Isolation | Indexes         │
-└──────────────────────────────────────────────────────┘
+│          Row-Level Tenant Isolation | Indexes          │
+└────────────────────────────────────────────────────────┘
                            │
-┌──────────────────────────▼───────────────────────────┐
+┌──────────────────────────▼─────────────────────────────┐
 │                  Cache Layer (Redis)                   │
-│        Metadata Cache | Session | Rate Limit          │
-└──────────────────────────────────────────────────────┘
+│        Metadata Cache | Session | Rate Limit           │
+└────────────────────────────────────────────────────────┘
 ```
 
 ### Key Architectural Principles
 
-| Principle | Description |
-|-----------|-------------|
-| Plugin First | Core never imports plugin code; plugins register themselves |
-| Metadata Driven | Behavior is declared, not coded |
-| Event Driven | All operations publish events; plugins react asynchronously |
-| AI Friendly | Metadata and events are machine-readable and well-structured |
-| Multi-Tenant Ready | Tenant context flows through all layers automatically |
-| Mobile First | APIs and UI components designed for mobile breakpoints first |
-| Audit by Default | Every write is audited automatically — no developer action required |
-| Immutable History | Submitted/Locked documents cannot be silently edited — amendment is the path |
-| Status-Driven Lifecycle | `status` field replaces `is_deleted`/`is_locked` — all state in one place |
+| Principle               | Description                                                                  |
+|-------------------------|------------------------------------------------------------------------------|
+| Plugin First            | Core never imports plugin code; plugins register themselves                  |
+| Metadata Driven         | Behavior is declared, not coded                                              |
+| Event Driven            | All operations publish events; plugins react asynchronously                  |
+| AI Friendly             | Metadata and events are machine-readable and well-structured                 |
+| Multi-Tenant Ready      | Tenant context flows through all layers automatically                        |
+| Mobile First            | APIs and UI components designed for mobile breakpoints first                 |
+| Audit by Default.       | Every write is audited automatically — no developer action required.         |
+| Immutable History       | Submitted/Locked documents cannot be silently edited — amendment is the path |
+| Status-Driven Lifecycle | `status` field replaces `is_deleted`/`is_locked` — all state in one place.   |
 
 ---
 
@@ -148,25 +148,25 @@ Framee is structured as a layered architecture:
 
 ### Core Tables
 
-| Table | Purpose |
-|-------|---------|
-| `sys_module` | Registered ERP modules |
-| `sys_doctype` | Registered document types |
-| `sys_docfield` | Fields per DocType |
-| `sys_role` | Roles for access control |
-| `sys_user` | Platform users |
-| `sys_user_role` | User-to-role mapping |
-| `sys_permission` | Role-level DocType permissions |
-| `sys_menu` | Navigation menu definitions |
-| `sys_workflow` | Workflow definitions |
-| `sys_workflow_state` | Workflow state nodes |
-| `sys_workflow_transition` | State transition rules |
-| `sys_workflow_history` | Workflow transition records |
-| `sys_audit_log` | Global immutable audit trail (compliance, forensics) |
-| `dt_{doctype}_logs` | Local activity log per DocType (Activity Timeline, Comments, Likes) |
-| `dt_{doctype}_likes` | Per-user likes per DocType record |
-| `sys_doc_version` | Document version snapshots |
-| `sys_lifecycle_status` | Valid lifecycle status values |
+| Table                     |                                                             Purpose |
+|---------------------------|---------------------------------------------------------------------|
+| `sys_module`              | Registered ERP modules                                              |
+| `sys_doctype`             | Registered document types                                           |
+| `sys_docfield`            | Fields per DocType                                                  |
+| `sys_role`                | Roles for access control                                            |
+| `sys_user`                | Platform users                                                      |
+| `sys_user_role`           | User-to-role mapping                                                |
+| `sys_permission`          | Role-level DocType permissions                                      |
+| `sys_menu`                | Navigation menu definitions                                         |
+| `sys_workflow`            | Workflow definitions                                                |
+| `sys_workflow_state`.     | Workflow state nodes                                                |
+| `sys_workflow_transition` | State transition rules                                              |
+| `sys_workflow_history`    | Workflow transition records                                         |
+| `sys_audit_log`           | Global immutable audit trail (compliance, forensics)                |
+| `dt_{doctype}_logs`       | Local activity log per DocType (Activity Timeline, Comments, Likes) |
+| `dt_{doctype}_likes`      | Per-user likes per DocType record                                   |
+| `sys_doc_version`         | Document version snapshots                                          |
+| `sys_lifecycle_status`    | Valid lifecycle status values                                       |
 
 ### Common Fields (All `dt_*` Document Tables)
 
@@ -203,12 +203,12 @@ cancel_reason   TEXT         NULL
 
 All APIs follow the pattern: `/api/v1/{resource}`
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/meta/doctypes` | List all registered DocTypes |
-| GET | `/api/v1/meta/doctype/:name` | Get full metadata of a DocType |
-| GET | `/api/v1/meta/modules` | List all registered modules |
-| GET | `/api/v1/system/health` | System health check |
+| Method | Endpoint                     | Description                       |
+|--------|------------------------------|-----------------------------------|
+| GET    | `/api/v1/meta/doctypes`      | List all registered DocTypes      |
+| GET    | `/api/v1/meta/doctype/:name` | Get full metadata of a DocType    |
+| GET    | `/api/v1/meta/modules`       | List all registered modules       |
+| GET    | `/api/v1/system/health`      | System health check               |
 
 ---
 
@@ -227,15 +227,15 @@ The UI is **Mobile First** — all views are designed for 375px viewport and sca
 
 ## Configuration
 
-| Config Key | Default | Description |
-|------------|---------|-------------|
-| `METADATA_CACHE_TTL` | `3600` | Metadata cache TTL in seconds |
-| `TENANT_HEADER` | `X-Tenant-ID` | HTTP header for tenant identification |
-| `DEFAULT_PAGE_SIZE` | `20` | Default list pagination size |
-| `MAX_PAGE_SIZE` | `200` | Maximum records per API request |
-| `PLUGIN_DIR` | `./plugins` | Directory scanned for plugin manifests |
-| `AUDIT_LOG_ENABLED` | `true` | Enable/disable audit trail logging |
-| `AI_SCHEMA_EXPORT` | `true` | Enable AI-friendly metadata endpoint |
+| Config Key             | Default           | Description                             |
+|------------------------|-------------------|-----------------------------------------|
+| `METADATA_CACHE_TTL`   | `3600`            | Metadata cache TTL in seconds           |
+| `TENANT_HEADER`        | `X-Tenant-ID`     | HTTP header for tenant identification   |
+| `DEFAULT_PAGE_SIZE`    | `20`              | Default list pagination size            |
+| `MAX_PAGE_SIZE`        | `200`             | Maximum records per API request         |
+| `PLUGIN_DIR`           | `./plugins`       | Directory scanned for plugin manifests  |
+| `AUDIT_LOG_ENABLED`    | `true`            | Enable/disable audit trail logging      |
+| `AI_SCHEMA_EXPORT`     | `true`            | Enable AI-friendly metadata endpoint    |
 
 ---
 
@@ -275,20 +275,20 @@ The UI is **Mobile First** — all views are designed for 375px viewport and sca
 
 ### Emitted Events
 
-| Event | Trigger |
-|-------|---------|
-| `system.boot` | Framework startup completed |
-| `plugin.registered` | A plugin has been loaded |
-| `doctype.created` | A new DocType is registered |
+| Event               | Trigger                           |
+|---------------------|-----------------------------------|
+| `system.boot`       | Framework startup completed       |
+| `plugin.registered` | A plugin has been loaded          |
+| `doctype.created`   | A new DocType is registered       |
 | `metadata.reloaded` | Metadata cache has been refreshed |
-| `user.login` | User authenticated successfully |
-| `user.logout` | User session terminated |
+| `user.login`        | User authenticated successfully   |
+| `user.logout`       | User session terminated           |
 
 ### Listened Events
 
-| Event | Action |
-|-------|--------|
-| `plugin.registered` | Reload module and menu metadata |
+| Event               | Action                                 |
+|---------------------|----------------------------------------|
+| `plugin.registered` | Reload module and menu metadata        |
 | `metadata.reloaded` | Clear and rebuild Redis metadata cache |
 
 ---

@@ -5,8 +5,8 @@ export async function seed(knex) {
   // Clear existing users to prevent conflicts
   await knex('sys_user').del();
 
-  const tenantId = '00000000-0000-0000-0000-000000000001'; // Default system tenant
-  const adminId = '00000000-0000-0000-0000-000000000002'; // Default admin id
+  const tenantId = '2607-00001'; // Default system tenant
+  const adminId = '2607-00001'; // Default admin id
   const passwordHash = await bcrypt.hash('admin123', 10);
   const pinHash = await bcrypt.hash('123456', 10);
 
@@ -19,7 +19,7 @@ export async function seed(knex) {
     pin_hash: pinHash,
     status: 'Active',
     is_system_user: true,
-    language: 'en',
+    language_id: '2607-00001',
     timezone: 'UTC'
   };
 

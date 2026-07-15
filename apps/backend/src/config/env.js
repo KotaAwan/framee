@@ -10,6 +10,7 @@ export const config = {
   app: {
     env: process.env.APP_ENV || 'development',
     port: parseInt(process.env.APP_PORT || '3001', 10),
+    systemTenantId: process.env.SYSTEM_TENANT_ID || '2607-00001',
   },
   db: {
     host: process.env.DB_HOST || 'localhost',

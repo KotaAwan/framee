@@ -62,11 +62,11 @@ Golden Rules
 
 Each rule is uniquely identified (e.g., `GR-CORE-01`) and carries a severity level:
 
-| Severity | Meaning |
-|----------|---------|
-| `MUST` | Non-negotiable. Violating this rule breaks the system contract. |
+| Severity | Meaning                                                            |
+|----------|--------------------------------------------------------------------|
+| `MUST`   | Non-negotiable. Violating this rule breaks the system contract.    |
 | `SHOULD` | Strongly recommended. Deviation requires documented justification. |
-| `MAY` | Optional best practice. Encouraged but not enforced. |
+| `MAY`    | Optional best practice. Encouraged but not enforced.               |
 
 ---
 
@@ -98,33 +98,33 @@ Golden Rules are not configurable by design. They are absolute constraints. The 
 
 ### 1. Core Integrity Rules
 
-| ID | Severity | Rule |
-|----|----------|------|
-| GR-CORE-01 | MUST | Core framework code must NEVER import from any plugin directory. Plugins register themselves into the core via hooks. |
-| GR-CORE-02 | MUST | All cross-module communication must go through the Event Engine. Direct function calls between modules are forbidden. |
-| GR-CORE-03 | MUST | No business domain logic (Finance, HR, Procurement, etc.) belongs in the core framework layer. |
-| GR-CORE-04 | MUST | All operations that modify data must emit the appropriate lifecycle event. Suppressing events is forbidden. |
-| GR-CORE-05 | SHOULD | Framework core must remain functional with zero plugins loaded. |
+| ID         | Severity | Rule                                                                                                                  |
+|------------|----------|-----------------------------------------------------------------------------------------------------------------------|
+| GR-CORE-01 | MUST     | Core framework code must NEVER import from any plugin directory. Plugins register themselves into the core via hooks. |
+| GR-CORE-02 | MUST     | All cross-module communication must go through the Event Engine. Direct function calls between modules are forbidden. |
+| GR-CORE-03 | MUST     | No business domain logic (Finance, HR, Procurement, etc.) belongs in the core framework layer.                        |
+| GR-CORE-04 | MUST     | All operations that modify data must emit the appropriate lifecycle event. Suppressing events is forbidden.           |
+| GR-CORE-05 | SHOULD   | Framework core must remain functional with zero plugins loaded.                                                       |
 
 ### 2. Metadata Rules
 
-| ID | Severity | Rule |
-|----|----------|------|
-| GR-META-01 | MUST | DocType definitions are the single source of truth. UI fields, API validation, and database columns must all derive from metadata — never be duplicated. |
-| GR-META-02 | MUST | Metadata must be treated as data, not code. No metadata is hard-coded in source files. |
-| GR-META-03 | MUST | Every DocField must have a `label`, `fieldtype`, and `description`. The `description` field is mandatory for AI-friendliness. |
-| GR-META-04 | MUST | Metadata changes must invalidate the relevant cache entries immediately. Stale metadata is not acceptable. |
-| GR-META-05 | SHOULD | DocType metadata should include `hint` and `example` values on fields where the intended value format is non-obvious. |
+| ID         | Severity | Rule |
+|------------|----------|------|
+| GR-META-01 | MUST     | DocType definitions are the single source of truth. UI fields, API validation, and database columns must all derive from metadata — never be duplicated. |
+| GR-META-02 | MUST     | Metadata must be treated as data, not code. No metadata is hard-coded in source files. |
+| GR-META-03 | MUST     | Every DocField must have a `label`, `fieldtype`, and `description`. The `description` field is mandatory for AI-friendliness. |
+| GR-META-04 | MUST     | Metadata changes must invalidate the relevant cache entries immediately. Stale metadata is not acceptable. |
+| GR-META-05 | SHOULD   | DocType metadata should include `hint` and `example` values on fields where the intended value format is non-obvious. |
 
 ### 3. Plugin Rules
 
-| ID | Severity | Rule |
-|----|----------|------|
-| GR-PLG-01 | MUST | Every plugin must declare a `plugin.manifest.json` describing its name, version, author, dependencies, and provided DocTypes. |
-| GR-PLG-02 | MUST | Plugins must not modify core system tables directly. All extensions are via registered hooks or new plugin-owned tables. |
-| GR-PLG-03 | MUST | Plugin tables must use a namespace prefix (e.g., `inv_`, `hr_`) to prevent naming collisions. |
-| GR-PLG-04 | MUST | Plugins must register cleanly and unregister cleanly. Removing a plugin must not leave orphaned records in core tables. |
-| GR-PLG-05 | SHOULD | Plugins should expose their own API documentation via the `/api/v1/meta/plugin/:name/schema` endpoint. |
+| ID        | Severity | Rule |
+|-----------|----------|------|
+| GR-PLG-01 | MUST     | Every plugin must declare a `plugin.manifest.json` describing its name, version, author, dependencies, and provided DocTypes. |
+| GR-PLG-02 | MUST     | Plugins must not modify core system tables directly. All extensions are via registered hooks or new plugin-owned tables. |
+| GR-PLG-03 | MUST     | Plugin tables must use a namespace prefix (e.g., `inv_`, `hr_`) to prevent naming collisions. |
+| GR-PLG-04 | MUST     | Plugins must register cleanly and unregister cleanly. Removing a plugin must not leave orphaned records in core tables. |
+| GR-PLG-05 | SHOULD   | Plugins should expose their own API documentation via the `/api/v1/meta/plugin/:name/schema` endpoint. |
 
 ### 4. API Rules
 
