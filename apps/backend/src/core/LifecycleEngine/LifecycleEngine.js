@@ -47,20 +47,8 @@ class LifecycleEngine {
     // 3. Status Transition Matrix & DocType Config
     switch (action) {
       case 'update':
-        if (['Locked', 'Cancelled', 'Archived', 'Approved', 'Rejected'].includes(status)) {
+        if (['Saved', 'Deleted'].includes(status)) {
           throw new ValidationError(`Cannot update document in status: ${status}.`);
-        }
-        if (status === 'Submitted' && !meta.allow_edit_after_submit) {
-          throw new ValidationError(`DocType configuration prevents edit after submit.`);
-        }
-        // Field-level locking check
-        if (status === 'Submitted' && meta.lock_fields_after_submit && payload) {
-          const lockedFields = typeof meta.lock_fields_after_submit === 'string' ? JSON.parse(meta.lock_fields_after_submit) : meta.lock_fields_after_submit;
-          for (const field of lockedFields) {
-            if (payload[field] !== undefined && payload[field] !== doc[field]) {
-              throw new ValidationError(`Field '${field}' is locked and cannot be updated after submit.`);
-            }
-          }
         }
         break;
 
@@ -68,14 +56,14 @@ class LifecycleEngine {
         if (!meta.allow_delete) {
           throw new ValidationError(`DocType configuration prevents deletion.`);
         }
-        if (status === 'Submitted' || status === 'Locked') {
-          throw new ValidationError(`Cannot delete a Submitted or Locked document. Cancel it first.`);
+        if (status === 'Saved') {
+          throw new ValidationError(`Cannot delete a Saved document. Unlock it first.`);
         }
         break;
 
       case 'submit':
-        if (status !== 'Draft') {
-          throw new ValidationError(`Only Draft documents can be submitted.`);
+        if (status !== 'Draft' && status !== 'New') {
+          throw new ValidationError(`Only New or Draft documents can be saved/submitted.`);
         }
         break;
 
@@ -83,8 +71,8 @@ class LifecycleEngine {
         if (!meta.allow_cancel) {
           throw new ValidationError(`DocType configuration prevents cancellation.`);
         }
-        if (status !== 'Submitted' && status !== 'Locked') {
-          throw new ValidationError(`Only Submitted or Locked documents can be cancelled.`);
+        if (status !== 'Saved') {
+          throw new ValidationError(`Only Saved documents can be unlocked.`);
         }
         break;
 
@@ -92,7 +80,7 @@ class LifecycleEngine {
         if (!meta.allow_amend) {
           throw new ValidationError(`DocType configuration prevents amendment.`);
         }
-        if (status !== 'Submitted' && status !== 'Locked' && status !== 'Cancelled') {
+        if (status !== 'Submitted' && status !== 'Cancelled') {
           throw new ValidationError(`Cannot amend a document in status: ${status}.`);
         }
         break;

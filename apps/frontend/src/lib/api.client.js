@@ -21,6 +21,20 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 // Response Interceptor: Handle 401 and silent refresh
 apiClient.interceptors.response.use(
   (response) => response,
@@ -35,6 +49,21 @@ apiClient.interceptors.response.use(
       }
 
       originalRequest._retry = true;
+
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(token => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return apiClient(originalRequest);
+          })
+          .catch(err => {
+            return Promise.reject(err);
+          });
+      }
+
+      isRefreshing = true;
       
       try {
         const { refreshToken, setTokens, logout } = useAuthStore.getState();
@@ -54,11 +83,16 @@ apiClient.interceptors.response.use(
         // Save new tokens
         setTokens(token, newRefreshToken);
         
+        processQueue(null, token);
+        isRefreshing = false;
+        
         // Retry original request with new token
         originalRequest.headers.Authorization = `Bearer ${token}`;
         return apiClient(originalRequest);
         
       } catch (refreshError) {
+        processQueue(refreshError, null);
+        isRefreshing = false;
         // Refresh failed, logout
         useAuthStore.getState().logout();
         return Promise.reject(refreshError);

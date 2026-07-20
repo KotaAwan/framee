@@ -39,8 +39,8 @@ class NamingEngine {
       return String(value).trim();
     }
 
-    // 3. Naming Series (e.g. MOD-.####)
-    if (autoname.startsWith('naming_series:') || autoname.includes('.#')) {
+    // 3. Naming Series (e.g. MOD-.#### or MOD-.XXXX)
+    if (autoname.startsWith('naming_series:') || autoname.includes('.#') || autoname.includes('.X')) {
       const pattern = autoname.startsWith('naming_series:') ? autoname.split(':')[1] : autoname;
       return await this._generateFromSeries(pattern, tableName);
     }

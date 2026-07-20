@@ -22,14 +22,13 @@ export async function up(knex) {
     // 3. Create _version Table (Dynamic structure based on main table columns)
     // To copy the exact structure of the main table into the _version table via Knex schema builder
     // is tricky without raw SQL, but we can execute a raw CREATE TABLE ... LIKE ... query in MySQL.
-    await knex.raw(`CREATE TABLE ?? LIKE ??`, [`${tableName}_version`, tableName]);
+    await knex.raw(`CREATE TABLE ?? SELECT * FROM ?? WHERE 1=0`, [`${tableName}_version`, tableName]);
     
     // Now alter the version table to add backup_by and backup_at, and change primary key.
     // wait, if we use CREATE TABLE LIKE, it copies the primary key. We need to drop the primary key,
     // rename `id` to `doc_id`, add a new `id` as auto increment.
     await knex.raw(`ALTER TABLE ?? MODIFY id INT UNSIGNED NOT NULL`, [`${tableName}_version`]);
     await knex.schema.alterTable(`${tableName}_version`, (table) => {
-      table.dropPrimary();
       table.renameColumn('id', 'doc_id');
     });
     

@@ -19,6 +19,7 @@ class DatabaseEngine {
     try {
       this.db = knex({
         client: 'mysql2',
+        debug: true,
         connection: {
           host: config.db.host,
           port: config.db.port,
@@ -37,7 +38,9 @@ class DatabaseEngine {
           warn(message) { logger.warn(message); },
           error(message) { logger.error(message); },
           deprecate(message) { logger.warn(`Deprecated: ${message}`); },
-          debug(message) { logger.debug(`Query: ${message.sql}`); }
+          debug(message) { 
+            console.log(`\x1b[36m[SQL Query]\x1b[0m ${message.sql} ${message.bindings ? ':: [' + message.bindings.join(', ') + ']' : ''}`);
+          }
         }
       });
 

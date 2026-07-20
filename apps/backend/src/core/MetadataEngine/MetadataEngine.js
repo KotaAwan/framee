@@ -40,10 +40,12 @@ class MetadataEngine {
     const cacheKey = this._getCacheKey(tenantId, name);
 
     // 1. Try Cache
-    const cachedMeta = await this.cacheEngine.get(cacheKey);
-    if (cachedMeta) {
-      logger.debug(`Metadata Cache HIT for ${name} (Tenant: ${tenantId})`);
-      return cachedMeta;
+    if (config.app.env !== 'development') {
+      const cachedMeta = await this.cacheEngine.get(cacheKey);
+      if (cachedMeta) {
+        logger.debug(`Metadata Cache HIT for ${name} (Tenant: ${tenantId})`);
+        return cachedMeta;
+      }
     }
 
     logger.debug(`Metadata Cache MISS for ${name} (Tenant: ${tenantId}). Loading from DB...`);
@@ -58,11 +60,11 @@ class MetadataEngine {
     let doctype;
     if (typeof name === 'number' || !isNaN(Number(name))) {
       doctype = await this.dbEngine.query('sys_doctype', queryTenantId)
-        .where({ id: Number(name), status: 'Active' })
+        .where({ id: Number(name), status: 'Saved' })
         .first();
     } else {
       doctype = await this.dbEngine.query('sys_doctype', queryTenantId)
-        .where({ table_name: name, status: 'Active' })
+        .where({ table_name: name, status: 'Saved' })
         .first();
     }
 
@@ -88,7 +90,9 @@ class MetadataEngine {
     };
 
     // 3. Populate Cache
-    await this.cacheEngine.set(cacheKey, metadata, CACHE_TTL);
+    if (config.app.env !== 'development') {
+      await this.cacheEngine.set(cacheKey, metadata, CACHE_TTL);
+    }
 
     return metadata;
   }
@@ -114,12 +118,12 @@ class MetadataEngine {
    * @returns {Promise<Array>}
    */
   async getAllDocTypes(tenantId) {
-    // We could cache this list as well, but for now we just query the DB.
-    // It's a lightweight query since it doesn't join fields.
     const listCacheKey = `${CACHE_PREFIX}:${tenantId}:__all_list`;
     
-    const cachedList = await this.cacheEngine.get(listCacheKey);
-    if (cachedList) return cachedList;
+    if (config.app.env !== 'development') {
+      const cachedList = await this.cacheEngine.get(listCacheKey);
+      if (cachedList) return cachedList;
+    }
 
     const SYSTEM_TENANT = config.app.systemTenantId;
     
@@ -129,7 +133,9 @@ class MetadataEngine {
       .where({ is_active: true, is_deleted: false })
       .select('id', 'name', 'label', 'module_id', 'is_submittable');
 
-    await this.cacheEngine.set(listCacheKey, doctypes, CACHE_TTL);
+    if (config.app.env !== 'development') {
+      await this.cacheEngine.set(listCacheKey, doctypes, CACHE_TTL);
+    }
     
     return doctypes;
   }

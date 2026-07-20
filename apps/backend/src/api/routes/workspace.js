@@ -24,7 +24,7 @@ router.get('/', tenantAuth, async (req, res, next) => {
 
     // 1. Get user roles
     const userRoles = await knex('sys_user_role')
-      .where({ user_id: user_id, is_deleted: false, status: 'Active' })
+      .where({ user_id: user_id, is_deleted: false, status: 'Saved' })
       .select('role_id');
     const roleIds = userRoles.map(r => r.role_id);
 
@@ -35,7 +35,7 @@ router.get('/', tenantAuth, async (req, res, next) => {
     // 2. Get workspaces (menu assignments) for these roles
     const workspaces = await knex('sys_workspace')
       .whereIn('role_id', roleIds)
-      .where({ is_deleted: false, status: 'Active' })
+      .where({ is_deleted: false, status: 'Saved' })
       .orderBy('sort_order', 'asc');
     
     const menuIds = [...new Set(workspaces.map(w => w.menu_id))];
@@ -47,14 +47,14 @@ router.get('/', tenantAuth, async (req, res, next) => {
     // 3. Get menus
     const menus = await knex('sys_menu')
       .whereIn('id', menuIds)
-      .where({ is_deleted: false, status: 'Active' });
+      .where({ is_deleted: false, status: 'Saved' });
       
     const doctypesNeeded = [...new Set(menus.map(m => m.doctype))];
 
     // 4. Get doctypes
     const doctypes = await knex('sys_doctype')
       .whereIn('table_name', doctypesNeeded)
-      .where({ is_deleted: false, status: 'Active' });
+      .where({ is_deleted: false, status: 'Saved' });
       
     const doctypeMap = new Map();
     doctypes.forEach(dt => doctypeMap.set(dt.table_name, dt));
@@ -64,7 +64,7 @@ router.get('/', tenantAuth, async (req, res, next) => {
     // 5. Get modules
     const modules = await knex('sys_module')
       .whereIn('id', moduleIdsNeeded)
-      .where({ is_deleted: false, status: 'Active' })
+      .where({ is_deleted: false, status: 'Saved' })
       .orderBy('name', 'asc');
 
     // 6. Assemble

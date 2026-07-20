@@ -6,9 +6,6 @@ import { config } from '../../config/env.js';
 
 class AuditEngine {
   constructor() {
-    this.logQueue = [];
-    this.isFlushing = false;
-    this.flushInterval = null;
     this.SENSITIVE_FIELDS = ['password', 'password_hash', 'pin', 'pin_hash', 'secret'];
   }
 
@@ -41,16 +38,13 @@ class AuditEngine {
 
     // Subscribe to Workflow Transitions
     EventEngine.on('*.workflow.transition', (p, c) => this._handleWorkflowEvent('Transition', p, c));
-
-    // Start background flusher
-    this.flushInterval = setInterval(() => this._flushLogs(), 1000);
     
     logger.info('Audit Engine initialized successfully.');
   }
 
   // --- Event Handlers ---
 
-  _handleSystemEvent(action, payload, context) {
+  async _handleSystemEvent(action, payload, context) {
     const entry = this._createGlobalLogEntry({
       action,
       tenant_id: context.tenant_id,
@@ -61,10 +55,15 @@ class AuditEngine {
       change_summary: `User ${action.toLowerCase().replace('_', ' ')}`,
       metadata: payload
     });
-    this.logQueue.push({ type: 'global', data: entry });
+    try {
+      const knex = DatabaseEngine.getRawConnection();
+      await knex('sys_audit_log').insert(entry);
+    } catch (e) {
+      logger.error('Failed to insert system audit log:', e);
+    }
   }
 
-  _handleDocumentEvent(action, payload, context) {
+  async _handleDocumentEvent(action, payload, context) {
     const doctype = payload.doctype || context.doctype;
     const doc = payload.doc || payload;
     if (!doctype || !doc) return;
@@ -82,7 +81,7 @@ class AuditEngine {
     const docId = doc.id;
     const docNameTitle = (doc.code ? `${doc.code}${doc.name ? ' - ' + doc.name : ''}` : null) || doc.title || doc.name || docId;
 
-    // Queue Global Log
+    // Insert Global Log synchronously
     const globalEntry = this._createGlobalLogEntry({
       action,
       tenant_id: context.tenant_id,
@@ -96,7 +95,12 @@ class AuditEngine {
       diff,
       change_summary: changeSummary
     });
-    this.logQueue.push({ type: 'global', data: globalEntry });
+    try {
+      const knex = DatabaseEngine.getRawConnection();
+      await knex('sys_audit_log').insert(globalEntry);
+    } catch (e) {
+      logger.error('Failed to insert document audit log:', e);
+    }
   }
 
   async _handleSocialEvent(action, payload, context) {
@@ -105,7 +109,9 @@ class AuditEngine {
 
     let changeSummary = action === 'COMMENT' ? 'Commented' : action === 'LIKE' ? 'Liked' : 'Unliked';
 
-    // Queue Global Log so it appears in standard audit trail
+
+
+    // Insert Global Log synchronously
     const globalEntry = this._createGlobalLogEntry({
       action,
       tenant_id: context.tenant_id,
@@ -117,7 +123,12 @@ class AuditEngine {
       change_summary: changeSummary,
       metadata: comment ? { comment } : null
     });
-    this.logQueue.push({ type: 'global', data: globalEntry });
+    try {
+      const knex = DatabaseEngine.getRawConnection();
+      await knex('sys_audit_log').insert(globalEntry);
+    } catch (e) {
+      logger.error('Failed to insert social audit log:', e);
+    }
 
     // Insert into local _logs table
     try {
@@ -137,13 +148,14 @@ class AuditEngine {
       logger.error('Failed to insert social event to local log:', e);
     }
   }
-  _handleWorkflowEvent(action, payload, context) {
+
+  async _handleWorkflowEvent(action, payload, context) {
     const { doc_id, doctype, from_state_id, to_state_id, comment, action_name } = payload;
     if (!doctype || !doc_id) return;
 
     let changeSummary = `Workflow Transition: ${action_name || 'State changed'}`;
 
-    // Queue Global Log
+    // Insert Global Log synchronously
     const globalEntry = this._createGlobalLogEntry({
       action: action_name || 'Transition',
       tenant_id: context.tenant_id,
@@ -155,7 +167,12 @@ class AuditEngine {
       change_summary: changeSummary,
       metadata: comment ? { comment, from_state_id, to_state_id } : { from_state_id, to_state_id }
     });
-    this.logQueue.push({ type: 'global', data: globalEntry });
+    try {
+      const knex = DatabaseEngine.getRawConnection();
+      await knex('sys_audit_log').insert(globalEntry);
+    } catch (e) {
+      logger.error('Failed to insert workflow audit log:', e);
+    }
   }
 
   // --- Helpers ---
@@ -175,24 +192,6 @@ class AuditEngine {
       diff: data.diff ? JSON.stringify(data.diff) : null,
       change_summary: data.change_summary || '',
       metadata: data.metadata ? JSON.stringify(data.metadata) : null,
-      created_at: new Date()
-    };
-  }
-
-  _createLocalLogEntry(data) {
-    return {
-      id: randomUUID(),
-      tenant_id: data.tenant_id || 'system',
-      doctype: data.doctype,
-      doc_id: data.doc_id,
-      doc_name: data.doc_name || null,
-      action: data.action,
-      user_id: data.user_id || null,
-      user_name: data.user_name || null,
-      user_avatar: data.user_avatar || null,
-      comment: data.comment || null,
-      diff: data.diff ? JSON.stringify(data.diff) : null,
-      change_summary: data.change_summary || '',
       created_at: new Date()
     };
   }
@@ -218,35 +217,7 @@ class AuditEngine {
     return diff;
   }
 
-  async _flushLogs() {
-    if (this.isFlushing || this.logQueue.length === 0) return;
-    
-    const knex = DatabaseEngine.getRawConnection();
-    if (!knex) return;
-
-    this.isFlushing = true;
-    
-    const batch = this.logQueue.splice(0, 100);
-    const globalLogs = batch.filter(item => item.type === 'global').map(item => item.data);
-
-    try {
-      // Write Global Logs
-      if (globalLogs.length > 0) {
-        await knex('sys_audit_log').insert(globalLogs);
-      }
-    } catch (err) {
-      logger.error('Failed to flush audit logs to database:', err);
-    } finally {
-      this.isFlushing = false;
-    }
-  }
-
   close() {
-    if (this.flushInterval) {
-      clearInterval(this.flushInterval);
-      this.flushInterval = null;
-    }
-    this._flushLogs();
     logger.info('Audit Engine closed.');
   }
 }

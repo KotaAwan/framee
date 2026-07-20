@@ -45,6 +45,8 @@ const sanitizeDoc = (doc) => {
  */
 router.get('/:doctype', async (req, res, next) => {
   try {
+    console.log(`\n***`);
+    console.log(`*** GET List Doctype: "${req.params.doctype}"`);
     const crudEngine = getCrudEngine();
     const records = await crudEngine.getList(req.params.doctype, req.query, req.tenantId, req.userId);
     res.json({ success: true, data: sanitizeDoc(records) });
@@ -59,6 +61,8 @@ router.get('/:doctype', async (req, res, next) => {
  */
 router.get('/:doctype/:id', async (req, res, next) => {
   try {
+    console.log(`\n***`);
+    console.log(`*** GET Doctype: "${req.params.doctype}" | ID: "${req.params.id}"`);
     const crudEngine = getCrudEngine();
     const record = await crudEngine.get(req.params.doctype, req.params.id, req.tenantId, req.userId);
     res.json({ success: true, data: sanitizeDoc(record) });
@@ -73,6 +77,8 @@ router.get('/:doctype/:id', async (req, res, next) => {
  */
 router.post('/:doctype', async (req, res, next) => {
   try {
+    console.log(`\n***`);
+    console.log(`*** POST Doctype: "${req.params.doctype}" | New`);
     const crudEngine = getCrudEngine();
     const record = await crudEngine.insert(req.params.doctype, req.body, req.tenantId, req.userId);
     res.status(201).json({ success: true, data: sanitizeDoc(record) });
@@ -87,6 +93,8 @@ router.post('/:doctype', async (req, res, next) => {
  */
 router.put('/:doctype/:id', async (req, res, next) => {
   try {
+    console.log(`\n***`);
+    console.log(`*** PUT Doctype: "${req.params.doctype}" | ID: "${req.params.id}"`);
     const crudEngine = getCrudEngine();
     const record = await crudEngine.update(req.params.doctype, req.params.id, req.body, req.tenantId, req.userId);
     res.json({ success: true, data: sanitizeDoc(record) });
@@ -101,6 +109,8 @@ router.put('/:doctype/:id', async (req, res, next) => {
  */
 router.delete('/:doctype/:id', async (req, res, next) => {
   try {
+    console.log(`\n***`);
+    console.log(`*** DELETE Doctype: "${req.params.doctype}" | ID: "${req.params.id}"`);
     const crudEngine = getCrudEngine();
     const result = await crudEngine.delete(req.params.doctype, req.params.id, req.tenantId, req.userId, req.body.delete_reason);
     res.json({ success: true, ...result });
@@ -201,7 +211,7 @@ router.post('/:doctype/:id/unlock', async (req, res, next) => {
 
 // --- WORKFLOW ENDPOINTS ---
 
-const getWorkflowEngine = () => require('../../core/Container.js').default.resolve('WorkflowEngine');
+const getWorkflowEngine = () => Container.resolve('WorkflowEngine');
 
 /**
  * GET /api/v1/doc/:doctype/:id/workflow/transitions
@@ -209,6 +219,8 @@ const getWorkflowEngine = () => require('../../core/Container.js').default.resol
  */
 router.get('/:doctype/:id/workflow/transitions', async (req, res, next) => {
   try {
+    console.log(`\n***`);
+    console.log(`*** GET Workflow Transitions Doctype: "${req.params.doctype}" | ID: "${req.params.id}"`);
     const workflowEngine = getWorkflowEngine();
     // Assuming req.user is set by auth middleware, if not we only have userId.
     // In our system, auth middleware attaches req.user object.
@@ -226,12 +238,14 @@ router.get('/:doctype/:id/workflow/transitions', async (req, res, next) => {
  */
 router.post('/:doctype/:id/workflow/transition', async (req, res, next) => {
   try {
+    console.log(`\n***`);
+    console.log(`*** POST Workflow Transition Doctype: "${req.params.doctype}" | ID: "${req.params.id}" | Action: "${req.body.action_key || req.body.action}"`);
     const workflowEngine = getWorkflowEngine();
     const user = req.user || { id: req.userId, is_system_user: true }; // Fallback
     const record = await workflowEngine.executeTransition(
       req.params.doctype, 
       req.params.id, 
-      req.body.action, 
+      req.body.action_key || req.body.action, 
       req.body.comment,
       req.tenantId, 
       user
@@ -382,8 +396,6 @@ router.post('/:doctype/:id/versions/:version/restore', async (req, res, next) =>
 
 // --- WORKFLOW ENDPOINTS ---
 
-
-
 /**
  * GET /api/v1/doc/:doctype/:id/workflow
  * Get current workflow state and available transitions
@@ -394,27 +406,6 @@ router.get('/:doctype/:id/workflow', async (req, res, next) => {
     const user = req.user || { id: req.userId, is_system_user: true }; // Fallback
     const transitions = await wfEngine.getAvailableTransitions(req.params.doctype, req.params.id, req.tenantId, user);
     res.json({ success: true, data: { available_transitions: transitions } });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * POST /api/v1/doc/:doctype/:id/workflow/transition
- * Execute a workflow transition
- */
-router.post('/:doctype/:id/workflow/transition', async (req, res, next) => {
-  try {
-    const wfEngine = getWorkflowEngine();
-    const record = await wfEngine.executeTransition(
-      req.params.doctype, 
-      req.params.id, 
-      req.body.action_key, 
-      req.body.comment, 
-      req.tenantId, 
-      req.user
-    );
-    res.json({ success: true, data: record });
   } catch (error) {
     next(error);
   }

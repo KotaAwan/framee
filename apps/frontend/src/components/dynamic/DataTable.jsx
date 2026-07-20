@@ -75,96 +75,166 @@ export default function DataTable({
 
     // 3. Action column
     cols.push({
+      size: 140,
       id: 'actions',
-      header: () => <div className="text-right">ACTIONS</div>,
+      header: () => <div className="text-left font-semibold">Action</div>,
       cell: ({ row }) => {
         const recordId = row.original.id || row.original.name;
 
-        const status = row.original.status || (row.original.docstatus === 1 ? 'Submitted' : (row.original.docstatus === 2 ? 'Cancelled' : 'Draft'));
-        const isLocked = row.original.is_terminal_state || status === 'Locked' || status === 'Submitted' || row.original.docstatus === 1;
+        const status = row.original.status || 'New';
+        const isSaved = status === 'Saved';
+        const isDraft = status === 'Draft';
+        const isNew = status === 'New';
 
-
+        // Check if print is supported (we'd check doctype options, but standard fallback is true or button action)
+        const isPrintable = true; // Fallback for standard doctypes
 
         return (
-          <div className="flex items-center justify-end gap-3 text-(--color-muted)">
-            {/* Lock/Unlock Toggle Icon based on state */}
-            {isLocked ? (
-              <button title="Unlock (Revert to Draft)" className="text-green-600 hover:text-green-700 transition-colors" onClick={() => {
-                setConfirmModal({
-                  isOpen: true,
-                  title: 'Unlock Record',
-                  message: 'Are you sure you want to unlock this record?',
-                  onConfirm: async () => {
-                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          <div className="flex items-center justify-start gap-3 text-(--color-muted)">
+            {/* 1. Saved State Actions */}
+            {isSaved && (
+              <>
+                {/* buttonLock hijau: click -> Action "Unlock" -> state "Draft" (log Unlocked) */}
+                <button title="Unlock" className="text-green-600 hover:text-green-700 transition-colors" onClick={() => {
+                  setConfirmModal({
+                    isOpen: true,
+                    title: 'Unlock Record',
+                    message: 'Are you sure you want to unlock this record to Draft?',
+                    onConfirm: async () => {
+                      setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                      try {
+                        const apiClient = (await import('../../lib/api.client')).default;
+                        await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/workflow/transition`, {
+                          action: 'Unlock',
+                          comment: 'Unlocked from list view'
+                        });
+                        if (refreshData) {
+                          setTimeout(() => refreshData(), 200);
+                        }
+                      } catch (e) {
+                        console.error(e);
+                        alert('Failed to unlock record');
+                      }
+                    }
+                  });
+                }}>
+                  <Lock size={16} />
+                </button>
+
+                {/* iconEye for View */}
+                <button title="View" className="hover:text-(--color-primary) transition-colors" onClick={() => setViewRecordId(recordId)}>
+                  <Eye size={16} />
+                </button>
+
+                {/* iconPrint for print format */}
+                {isPrintable && (
+                  <button title="Print" className="hover:text-purple-600 transition-colors" onClick={async () => {
                     try {
                       const apiClient = (await import('../../lib/api.client')).default;
-                      await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/unlock`);
-                      if (refreshData) refreshData();
-                    } catch (e) {
-                      console.error(e);
-                      alert('Failed to unlock record');
+                      const res = await apiClient.get(`/api/v1/doc/${doctype}/${recordId}/print`, { responseType: 'text' });
+                      const win = window.open('', '_blank');
+                      win.document.write(res.data);
+                      win.document.close();
+                      win.focus();
+                      setTimeout(() => win.print(), 500);
+                    } catch (err) {
+                      console.error('Print error:', err);
+                      alert('Failed to load print format.');
                     }
-                  }
-                });
-              }}>
-                <Lock size={16} />
-              </button>
-            ) : (
-              <button title="Lock (Submit)" className="text-red-600 hover:text-red-700 transition-colors" onClick={() => {
-                setConfirmModal({
-                  isOpen: true,
-                  title: 'Submit Record',
-                  message: 'Are you sure you want to submit/lock this record?',
-                  onConfirm: async () => {
-                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                    try {
-                      const apiClient = (await import('../../lib/api.client')).default;
-                      await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/submit`);
-                      if (refreshData) refreshData();
-                    } catch (e) {
-                      console.error(e);
-                      alert('Failed to submit record');
-                    }
-                  }
-                });
-              }}>
-                <Unlock size={16} />
-              </button>
+                  }}>
+                    <Printer size={16} />
+                  </button>
+                )}
+              </>
             )}
 
-            {/* Standard Actions */}
-            {!isLocked ? (
+            {/* 2. Draft State Actions */}
+            {isDraft && (
               <>
-                <button title="Edit" className="hover:text-(--color-primary) transition-colors" onClick={() => router.push(`/${module || 'doctype'}/${doctype}/${recordId}`)}>
+                {/* buttonUnLock merah: click -> Action "Lock" -> state "Saved" (log Locked) */}
+                <button title="Lock" className="text-red-600 hover:text-red-700 transition-colors" onClick={() => {
+                  setConfirmModal({
+                    isOpen: true,
+                    title: 'Lock Record',
+                    message: 'Are you sure you want to lock this record to Saved?',
+                    onConfirm: async () => {
+                      setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                      try {
+                        const apiClient = (await import('../../lib/api.client')).default;
+                        await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/workflow/transition`, {
+                          action: 'Lock',
+                          comment: 'Locked from list view'
+                        });
+                         if (refreshData) {
+                           setTimeout(() => refreshData(), 200);
+                         }
+                      } catch (e) {
+                        console.error(e);
+                        alert('Failed to lock record');
+                      }
+                    }
+                  });
+                }}>
+                  <Unlock size={16} />
+                </button>
+
+                {/* iconEdit for Form Edit */}
+                <button title="Edit" className="text-blue-600 hover:text-blue-700 transition-colors" onClick={() => router.push(`/${module || 'doctype'}/${doctype}/${recordId}`)}>
                   <Edit size={16} />
                 </button>
-                <button title="Delete" className="text-red-500 hover:text-red-700 transition-colors" onClick={() => { 
+
+                {/* iconTrash for Delete */}
+                <button title="Delete" className="text-red-600 hover:text-red-700 transition-colors" onClick={() => { 
                   setConfirmModal({
                     isOpen: true,
                     title: 'Delete Record',
                     message: 'Are you sure you want to delete this record?',
-                    onConfirm: () => {
+                    onConfirm: async () => {
                       setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                      /* Mock delete */ 
+                      try {
+                        const apiClient = (await import('../../lib/api.client')).default;
+                        await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/workflow/transition`, {
+                          action: 'Delete',
+                          comment: 'Deleted from list view'
+                        });
+                        if (refreshData) refreshData();
+                      } catch (e) {
+                        console.error(e);
+                        alert('Failed to delete record');
+                      }
                     }
                   });
                 }}>
                   <Trash2 size={16} />
                 </button>
               </>
-            ) : (
+            )}
+
+            {/* 3. New State Actions */}
+            {isNew && (
               <>
-                <button title="View" className="hover:text-(--color-primary) transition-colors" onClick={() => setViewRecordId(recordId)}>
-                  <Eye size={16} />
-                </button>
-                <button title="Print" className="hover:text-purple-600 transition-colors" onClick={() => window.print()}>
-                  <Printer size={16} />
+                {/* iconEdit for Form Edit */}
+                <button title="Edit" className="hover:text-(--color-primary) transition-colors" onClick={() => router.push(`/${module || 'doctype'}/${doctype}/${recordId}`)}>
+                  <Edit size={16} />
                 </button>
               </>
             )}
+          </div>
+        );
+      }
+    });
 
+    // 4. Social column (Like, Comment)
+    cols.push({
+      id: 'socials',
+      size: 90,
+      header: () => <div className="text-left font-semibold"></div>,
+      cell: ({ row }) => {
+        const recordId = row.original.id || row.original.name;
+        return (
+          <div className="flex items-center justify-start gap-3 text-(--color-muted)">
             {/* Socials */}
-            <button className="flex items-center gap-1 hover:text-pink-500 text-xs ml-2" onClick={() => setViewRecordId(recordId)}>
+            <button className="flex items-center gap-1 hover:text-pink-500 text-xs" onClick={() => setViewRecordId(recordId)}>
               <Heart size={14} className={row.original.is_liked ? "fill-red-600 text-red-600" : ""} /> {row.original.likes || 0}
             </button>
             <button className="flex items-center gap-1 hover:text-indigo-500 text-xs" onClick={() => setViewRecordId(recordId)}>
@@ -195,7 +265,10 @@ export default function DataTable({
         <QuickViewModal
           doctype={doctype}
           recordId={viewRecordId}
-          onClose={() => setViewRecordId(null)}
+          onClose={() => {
+            setViewRecordId(null);
+            if (refreshData) refreshData();
+          }}
         />
       )}
 
@@ -215,20 +288,38 @@ export default function DataTable({
 
       <div className="w-full flex flex-col">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
+          <table className="text-sm text-left border-collapse" style={{ tableLayout: 'auto', width: '100%' }}>
             <thead className="text-xs uppercase bg-(--color-surface-hover) border-b border-(--color-border) text-(--color-muted)">
-              {table.getHeaderGroups().map(headerGroup => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map(header => (
-                    <th key={header.id} className="px-4 py-3 font-medium">
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              ))}
+              {table.getHeaderGroups().map(headerGroup => {
+                // Build a custom header row merging 'actions' + 'socials' into one colspan=2 cell
+                const headers = headerGroup.headers;
+                const renderedHeaders = [];
+                let i = 0;
+                while (i < headers.length) {
+                  const header = headers[i];
+                  if (header.column.id === 'actions') {
+                    // Merge with next socials header
+                    renderedHeaders.push(
+                      <th key="actions-merged" colSpan={2} className="px-3 py-3 font-medium whitespace-nowrap text-left">
+                        Action
+                      </th>
+                    );
+                    i += 2; // skip both actions and socials
+                  } else {
+                    const isCheckbox = header.column.id === 'select';
+                    renderedHeaders.push(
+                      <th
+                        key={header.id}
+                        className={`px-3 py-3 font-medium${isCheckbox ? ' w-8' : ''}`}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    );
+                    i++;
+                  }
+                }
+                return <tr key={headerGroup.id}>{renderedHeaders}</tr>;
+              })}
             </thead>
             <tbody>
               {loading ? (
@@ -246,17 +337,32 @@ export default function DataTable({
               ) : (
                 table.getRowModel().rows.map(row => (
                   <tr key={row.id} className="border-b border-(--color-border) hover:bg-(--color-surface-hover) transition-colors">
-                    {row.getVisibleCells().map(cell => (
-                      <td key={cell.id} className="px-4 py-3 truncate max-w-[200px]">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
+                    {row.getVisibleCells().map(cell => {
+                      const isActions = cell.column.id === 'actions';
+                      const isSocials = cell.column.id === 'socials';
+                      const isCheckbox = cell.column.id === 'select';
+                      return (
+                        <td
+                          key={cell.id}
+                          className={
+                            isCheckbox
+                              ? 'px-3 py-3 w-8'
+                              : isActions || isSocials
+                                ? 'px-3 py-3 whitespace-nowrap w-px'
+                                : 'px-3 py-3 truncate max-w-[240px]'
+                          }
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+
 
         {/* Pagination Bar */}
         <div className="px-4 py-3 flex flex-col sm:flex-row items-center justify-between border-t border-(--color-border) text-xs text-(--color-muted) bg-(--color-surface)">

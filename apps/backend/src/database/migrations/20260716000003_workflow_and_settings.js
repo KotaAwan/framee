@@ -11,10 +11,9 @@ export async function up(knex) {
       table.timestamp('created_at').defaultTo(knex.fn.now());
     });
 
-    await knex.raw(`CREATE TABLE ?? LIKE ??`, [`${tableName}_version`, tableName]);
+    await knex.raw(`CREATE TABLE ?? SELECT * FROM ?? WHERE 1=0`, [`${tableName}_version`, tableName]);
     await knex.raw(`ALTER TABLE ?? MODIFY id INT UNSIGNED NOT NULL`, [`${tableName}_version`]);
     await knex.schema.alterTable(`${tableName}_version`, (table) => {
-      table.dropPrimary();
       table.renameColumn('id', 'doc_id');
     });
     

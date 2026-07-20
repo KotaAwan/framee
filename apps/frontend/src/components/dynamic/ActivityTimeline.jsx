@@ -2,7 +2,96 @@ import React, { useState, useEffect } from 'react';
 import { Activity } from 'lucide-react';
 import apiClient from '../../lib/api.client';
 
-export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0 }) {
+// ── Component #5: ListActivity (The actual list inside the card that fades in on reload)
+function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, hasMore, setPage, getActionStyle, formatTime }) {
+  return (
+    <>
+      <style>{`
+        @keyframes timelineFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(3px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .timeline-item-fade {
+          opacity: 0;
+          animation: timelineFadeIn 0.15s ease-out forwards;
+        }
+      `}</style>
+
+      <div key={`${doctype}-${recordId}-${page}`} className="divide-y divide-(--color-border)">
+        {loading && logs.length === 0 ? (
+          <div className="px-5 py-6 text-sm text-(--color-muted) text-center animate-pulse">Loading activity...</div>
+        ) : logs.length === 0 ? (
+          <div className="px-5 py-6 text-sm text-(--color-muted) text-center">No activity yet.</div>
+        ) : (
+          logs.map((log, idx) => {
+            const actionStyle = getActionStyle(log.action);
+            const initial = log.user_name ? log.user_name.charAt(0).toUpperCase() : 'S';
+
+            let metadata = null;
+            try { metadata = log.metadata ? JSON.parse(log.metadata) : null; } catch (e) {}
+
+            return (
+              <div 
+                key={log.id} 
+                className="flex items-center gap-3 px-5 py-3 hover:bg-(--color-surface-hover)/50 transition-colors timeline-item-fade"
+                style={{ animationDelay: `${idx * 10}ms` }}
+              >
+                {/* Avatar */}
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs overflow-hidden">
+                  {log.avatar_url ? (
+                    <img src={log.avatar_url} alt={log.user_name} className="w-full h-full object-cover" />
+                  ) : (
+                    initial
+                  )}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0 text-sm flex flex-wrap items-center gap-1">
+                  <span className="font-semibold text-(--color-text)">{log.user_name || 'System'}</span>
+                  <span>
+                    <span className={`font-semibold ${actionStyle.color}`}>{actionStyle.text}</span>
+                    {log.doc_id && <span className="text-(--color-muted)">, ID {log.doc_id}</span>}
+                  </span>
+                  
+                  {(log.content || metadata?.comment) && (
+                    <span className="text-(--color-muted) italic text-xs truncate max-w-xs">({log.content || metadata?.comment})</span>
+                  )}
+                </div>
+
+                {/* Timestamp */}
+                <div className="flex-shrink-0 text-xs text-(--color-muted) whitespace-nowrap">
+                  {formatTime(log.created_at)}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Load More */}
+      {hasMore && (
+        <div className="border-t border-(--color-border) p-3 flex justify-center bg-(--color-surface)">
+          <button 
+            onClick={() => setPage(p => p + 1)}
+            disabled={loading}
+            className="text-sm font-medium text-(--color-primary) hover:text-(--color-primary-hover) disabled:opacity-50 transition-colors px-4 py-2 rounded-md hover:bg-(--color-surface-hover)"
+          >
+            {loading ? 'Loading...' : 'Load More...'}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Component #4: ActivityTimeline (The card container, wrapper, and data orchestrator)
+export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0, onLogsLoaded }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -31,6 +120,10 @@ export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0
         if (res.data.success) {
           const fetchedLogs = Array.isArray(res.data.data) ? res.data.data : (res.data.data.records || []);
           
+          if (onLogsLoaded) {
+            onLogsLoaded(fetchedLogs);
+          }
+
           if (!recordId) {
             if (page === 1) {
               setLogs(fetchedLogs);
@@ -61,9 +154,12 @@ export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0
       case 'UNLOCKED':   return { text: 'Unlocked', color: 'text-purple-600' };
       case 'SUBMITTED':  return { text: 'Submitted',color: 'text-teal-600' };
       case 'CANCELLED':  return { text: 'Cancelled',color: 'text-red-500' };
-      case 'LIKE':       return { text: 'Liked',    color: 'text-pink-500' };
-      case 'UNLIKE':     return { text: 'Unliked',  color: 'text-gray-400' };
-      case 'COMMENT':    return { text: 'Commented',color: 'text-indigo-500' };
+      case 'LIKE':
+      case 'LIKED':       return { text: 'Liked',    color: 'text-pink-500' };
+      case 'UNLIKE':
+      case 'UNLIKED':     return { text: 'Unliked',  color: 'text-gray-400' };
+      case 'COMMENT':
+      case 'COMMENTED':    return { text: 'Commented',color: 'text-indigo-500' };
       default:           return { text: action,     color: 'text-gray-500' };
     }
   };
@@ -79,79 +175,25 @@ export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0
 
   return (
     <div className="bg-(--color-surface) rounded-lg border border-(--color-border) overflow-hidden">
-      {/* Header */}
+      {/* Header (Component #4) */}
       <div className="flex items-center gap-2 px-5 py-3 border-b border-(--color-border)">
         <Activity size={16} className="text-blue-500" />
         <span className="font-semibold text-sm text-(--color-text)">Activity Timeline</span>
       </div>
 
-      {/* Timeline List */}
-      <div className={`divide-y divide-(--color-border) transition-opacity duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
-        {loading && logs.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-(--color-muted) text-center">Loading activity...</div>
-        ) : logs.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-(--color-muted) text-center">No activity yet.</div>
-        ) : (
-          logs.map((log) => {
-            const actionStyle = getActionStyle(log.action);
-            const initial = log.user_name ? log.user_name.charAt(0).toUpperCase() : 'S';
-
-            let metadata = null;
-            try { metadata = log.metadata ? JSON.parse(log.metadata) : null; } catch (e) {}
-
-            return (
-              <div key={log.id} className="flex items-center gap-3 px-5 py-3 hover:bg-(--color-surface-hover)/50 transition-colors">
-                {/* Avatar */}
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs overflow-hidden">
-                  {log.avatar_url ? (
-                    <img src={log.avatar_url} alt={log.user_name} className="w-full h-full object-cover" />
-                  ) : (
-                    initial
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0 text-sm flex flex-wrap items-center gap-1">
-                  <span className="font-semibold text-(--color-text)">{log.user_name || 'System'}</span>
-                  {log.doc_id && (
-                    <span className="text-(--color-muted)">, ID {log.doc_id}</span>
-                  )}
-                  
-                  {/* For COMMENT action */}
-                  {log.action?.toUpperCase() === 'COMMENT' && metadata?.comment && (
-                    <span className="text-(--color-muted) italic text-xs truncate max-w-xs">({metadata.comment})</span>
-                  )}
-                  
-                  {/* For other actions */}
-                  {log.change_summary && log.action?.toUpperCase() !== 'COMMENT' && (
-                    <span className="text-(--color-muted) italic text-xs truncate max-w-xs">({log.change_summary})</span>
-                  )}
-                  
-                  <span className={`font-semibold ${actionStyle.color}`}>{actionStyle.text}</span>
-                </div>
-
-                {/* Timestamp */}
-                <div className="flex-shrink-0 text-xs text-(--color-muted) whitespace-nowrap">
-                  {formatTime(log.created_at)}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* Load More */}
-      {hasMore && (
-        <div className="border-t border-(--color-border) p-3 flex justify-center bg-(--color-surface)">
-          <button 
-            onClick={() => setPage(p => p + 1)}
-            disabled={loading}
-            className="text-sm font-medium text-(--color-primary) hover:text-(--color-primary-hover) disabled:opacity-50 transition-colors px-4 py-2 rounded-md hover:bg-(--color-surface-hover)"
-          >
-            {loading ? 'Loading...' : 'Load More...'}
-          </button>
-        </div>
-      )}
+      {/* Component #5: ListActivity */}
+      <ListActivity
+        loading={loading}
+        logs={logs}
+        doctype={doctype}
+        recordId={recordId}
+        refreshTrigger={refreshTrigger}
+        page={page}
+        hasMore={hasMore}
+        setPage={setPage}
+        getActionStyle={getActionStyle}
+        formatTime={formatTime}
+      />
     </div>
   );
 }

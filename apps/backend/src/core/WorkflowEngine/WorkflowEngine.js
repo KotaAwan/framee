@@ -20,8 +20,9 @@ class WorkflowEngine {
   }
 
   /**
-   * Retrieves the active workflow for a given DocType.
-   * Returns null if no active workflow exists.
+   * Retrieves all active workflow transitions for a given DocType.
+   * In the refactored schema, sys_workflow rows ARE the transitions (one row = one transition).
+   * Returns null if no transitions exist.
    */
   async getActiveWorkflow(doctype, tenantId) {
     const cacheKey = `framee:meta:${tenantId}:workflow:${doctype}`;
@@ -31,41 +32,43 @@ class WorkflowEngine {
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
     if (!meta) return null;
 
-    const workflow = await this.dbEngine.query('sys_workflow', tenantId, { includeDeleted: true })
-      .where({ doctype: meta.table_name, status: 'Active', is_deleted: false })
-      .first();
-
-    if (!workflow) return null;
-
-    const transitions = await this.dbEngine.query('sys_workflow_transition', tenantId, { includeDeleted: true })
-      .where({ doctype: meta.table_name, status: 'Active', is_deleted: false })
+    // In the new schema, sys_workflow holds transitions directly (from_state, to_state, action per row)
+    const transitions = await this.dbEngine.getRawConnection()('sys_workflow')
+      .where({ doctype: meta.table_name, status: 'Saved', is_deleted: false })
       .orderBy('sort_order', 'asc');
 
-    // We no longer need to fetch states by ID because they are stored as strings (names) directly in transition
-    // But we still might want to fetch state definitions if we need styles, etc.
+    if (!transitions || transitions.length === 0) return null;
+
+    // Collect unique state names from transitions
     const stateNames = new Set();
-    stateNames.add(workflow.initial_state);
     transitions.forEach(t => {
       stateNames.add(t.from_state);
       stateNames.add(t.to_state);
     });
 
-    const states = await this.dbEngine.query('sys_workflow_state', tenantId, { includeDeleted: true })
+    // Fetch state definitions from sys_state (refactored from sys_workflow_state)
+    const states = await this.dbEngine.getRawConnection()('sys_state')
       .whereIn('name', Array.from(stateNames));
 
-    const actionIds = new Set();
-    transitions.forEach(t => actionIds.add(t.action));
+    // Collect unique action names
+    const actionNames = new Set();
+    transitions.forEach(t => actionNames.add(t.action));
 
-    const actions = await this.dbEngine.query('sys_workflow_action', tenantId, { includeDeleted: true })
-      .whereIn('name', Array.from(actionIds));
+    // Fetch action definitions from sys_action (refactored from sys_workflow_action)
+    const actions = await this.dbEngine.getRawConnection()('sys_action')
+      .whereIn('name', Array.from(actionNames));
+
+    // Determine initial state (the from_state of the first transition, typically 'Draft')
+    const initialState = transitions[0]?.from_state || 'Draft';
 
     const result = {
-      ...workflow,
+      doctype: meta.table_name,
+      initial_state: initialState,
       states,
       actions,
       transitions: transitions.map(t => ({
         ...t,
-        allowed_roles: typeof t.allowed_roles === 'string' ? JSON.parse(t.allowed_roles) : t.allowed_roles
+        allowed_roles: typeof t.allow_roles === 'string' ? JSON.parse(t.allow_roles) : (t.allow_roles || [])
       }))
     };
 
@@ -93,14 +96,15 @@ class WorkflowEngine {
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
     const tableName = meta.table_name;
 
-    const doc = await this.dbEngine.query(tableName, tenantId).where({ id: docId }).first();
+    const parsedId = isNaN(docId) ? docId : Number(docId);
+    const doc = await this.dbEngine.query(tableName, tenantId).where({ id: parsedId }).first();
     if (!doc) throw new NotFoundError(`${doctype} not found.`);
 
     // Current state is stored in doc.status
     const currentState = doc.status || workflow.initial_state;
     if (!currentState) return [];
 
-    // Filter transitions where from_state matches
+    // Filter transitions where from_state matches current status
     const possibleTransitions = workflow.transitions.filter(t => t.from_state === currentState);
 
     const userRoles = user.roles || [];
@@ -137,13 +141,20 @@ class WorkflowEngine {
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
     const tableName = meta.table_name;
 
-    const doc = await this.dbEngine.query(tableName, tenantId).where({ id: docId }).first();
+    const parsedId = isNaN(docId) ? docId : Number(docId);
+    const doc = await this.dbEngine.query(tableName, tenantId).where({ id: parsedId }).first();
     if (!doc) throw new NotFoundError(`${doctype} not found.`);
 
     const currentState = doc.status || workflow.initial_state;
 
-    // Find the requested transition directly by action name
-    const transition = workflow.transitions.find(t => t.from_state === currentState && t.action === actionName);
+    // Find the requested transition by action name OR action key
+    const transition = workflow.transitions.find(t => {
+      if (t.from_state !== currentState) return false;
+      const actionDetails = workflow.actions.find(a => a.name === t.action);
+      return t.action === actionName ||
+             (actionDetails && actionDetails.key === actionName);
+    });
+
     if (!transition) {
       throw new ValidationError(`Invalid transition '${actionName}' from state '${currentState}'.`);
     }
@@ -180,23 +191,21 @@ class WorkflowEngine {
       // 1. Copy old data to _version table
       if (tableName !== 'sys_docfield') {
         const oldData = { ...doc, doc_id: doc.id, backup_by: user.id, backup_at: new Date() };
-        delete oldData.id; 
+        delete oldData.id;
         await trx(`${tableName}_version`).insert(oldData);
       }
 
-      // 2. Update document
+      // 2. Update document status
       await trx(tableName)
-        .where({ id: docId })
-        .update({
-          status: nextState
-        });
+        .where({ id: parsedId })
+        .update({ status: nextState });
 
-      // 3. Insert history to _logs
-      if (tableName !== 'sys_docfield') {
+      // 3. Insert history to _logs (skip duplicate logs for auto-saved/auto-updated system transitions)
+      if (tableName !== 'sys_docfield' && comment !== 'Auto-saved' && comment !== 'Auto-updated') {
         await trx(`${tableName}_logs`).insert({
-          doc_id: docId,
-          status: nextState, // Update this to match the new state instead of targetAction.name as targetAction.name is something like 'Submit' but status should be 'Submitted'
-          content: comment || doc.name,
+          doc_id: parsedId,
+          status: transition.log_status || nextState,
+          content: comment || doc.name || String(parsedId),
           created_by: user.id,
           created_at: new Date()
         });
@@ -216,17 +225,18 @@ class WorkflowEngine {
       doc_name: docNameTitle,
       from_state: currentState,
       to_state: nextState,
-      action_name: targetAction.name,
+      action_name: actionName,
       user_id: user.id,
       comment
     };
     await this.eventEngine.emit(`${doctype}.workflow.transition`, payload, { tenantId, userId: user.id });
 
-    // Invalidate cache
+    // Invalidate workflow cache so next call picks up fresh state
+    await this.cacheEngine.del(`framee:meta:${tenantId}:workflow:${doctype}`);
     await this.cacheEngine.del(`framee:doc:${tenantId}:${doctype}:${docId}`);
 
     // Return the updated document
-    const updatedDoc = await this.dbEngine.query(tableName, tenantId).where({ id: docId }).first();
+    const updatedDoc = await this.dbEngine.query(tableName, tenantId).where({ id: parsedId }).first();
     return updatedDoc;
   }
   

@@ -29,7 +29,7 @@ class CRUDEngine {
     
     // We only enforce required fields on insert, or if the field is present on update
     for (const field of meta.fields) {
-      if (field.is_required) {
+      if (field.is_required && !field.is_hidden) {
         if (!isUpdate && (data[field.fieldname] === undefined || data[field.fieldname] === null || data[field.fieldname] === '')) {
           errors.push(`Field '${field.fieldname}' is required.`);
         } else if (isUpdate && data[field.fieldname] !== undefined && (data[field.fieldname] === null || data[field.fieldname] === '')) {
@@ -41,6 +41,34 @@ class CRUDEngine {
     if (errors.length > 0) {
       throw new ValidationError('Validation failed', errors);
     }
+  }
+
+  _parseDatabaseError(err, meta) {
+    if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
+      const match = err.message.match(/Duplicate entry '([^']+)' for key '([^']+)'/);
+      if (match) {
+        const val = match[1];
+        const keyName = match[2];
+        
+        let fieldLabel = 'Field';
+        for (const field of meta.fields) {
+          const expectedKeyPart = `${meta.table_name}_${field.fieldname}_unique`;
+          const expectedKeyPart2 = `${field.fieldname}_unique`;
+          if (keyName.includes(expectedKeyPart) || keyName.includes(expectedKeyPart2) || keyName.toLowerCase().includes(field.fieldname.toLowerCase())) {
+            fieldLabel = field.label || field.fieldname;
+            break;
+          }
+        }
+        
+        return new ValidationError(`Duplicate entry detected`, [
+          `${fieldLabel} '${val}' is already registered and must be unique.`
+        ]);
+      }
+      return new ValidationError('Duplicate entry detected', [
+        'A record with this unique value already exists.'
+      ]);
+    }
+    return err;
   }
 
   /**
@@ -84,7 +112,7 @@ class CRUDEngine {
     const record = {
       ...parentData,
       code,
-      status: meta.initial_status || 'Draft',
+      status: meta.initial_status || 'New',
     };
 
     let insertedId;
@@ -145,7 +173,7 @@ class CRUDEngine {
       await trx.commit();
     } catch (err) {
       await trx.rollback();
-      throw err;
+      throw this._parseDatabaseError(err, meta);
     }
 
     const newRecord = await this.get(doctype, insertedId, tenantId, userId);
@@ -154,7 +182,7 @@ class CRUDEngine {
     await this.eventEngine.emit(`${doctype}.after_insert`, { doc: newRecord }, { 
       tenant_id: tenantId, 
       user_id: userId, 
-      doc_id: id, 
+      doc_id: insertedId, 
       doctype 
     });
 
@@ -175,7 +203,7 @@ class CRUDEngine {
       record = await this.dbEngine.query(tableName, tenantId).first();
       // If it doesn't exist yet, return a template so frontend can render an empty form
       if (!record) {
-        return { id: doctype, status: 'Active' };
+        return { id: doctype, status: 'Saved' };
       }
     } else {
       record = await this.dbEngine.query(tableName, tenantId)
@@ -196,7 +224,7 @@ class CRUDEngine {
         const childTableName = childMeta.table_name;
         
         const childRecords = await this.dbEngine.query(childTableName, tenantId)
-          .where({ parent_id: record.id, parent_field: field.fieldname, status: 'Active' })
+          .where({ parent_id: record.id, parent_field: field.fieldname, status: 'Saved' })
           .orderBy('idx', 'asc');
           
         record[field.fieldname] = childRecords;
@@ -208,8 +236,9 @@ class CRUDEngine {
     // Resolve sys_state for status field
     if (record.status) {
       try {
-        const state = await this.dbEngine.query('sys_workflow_state', tenantId)
+        const state = await this.dbEngine.query('sys_state', tenantId)
           .where({ id: record.status })
+          .orWhere({ name: record.status })
           .first();
         if (state) {
           record.status_id = record.status;
@@ -314,13 +343,15 @@ class CRUDEngine {
       const stateIds = [...new Set(records.map(r => r.status).filter(Boolean))];
       if (stateIds.length > 0) {
         try {
-          const states = await this.dbEngine.query('sys_workflow_state', tenantId)
+          const states = await this.dbEngine.query('sys_state', tenantId)
             .whereIn('id', stateIds)
+            .orWhereIn('name', stateIds)
             .select('id', 'name', 'style', 'is_terminal');
             
           const stateMap = {};
           for (const s of states) {
             stateMap[s.id] = s;
+            stateMap[s.name] = s;
           }
           
           for (const record of records) {
@@ -439,7 +470,7 @@ class CRUDEngine {
         await trx(`${tableName}_logs`).insert({
           doc_id: existingDoc.id,
           status: 'Updated',
-          content: record.name || existingDoc.name || null,
+          content: updateData.name || existingDoc.name || null,
           created_by: userId,
           created_at: new Date()
         });
@@ -491,7 +522,7 @@ class CRUDEngine {
       await trx.commit();
     } catch (err) {
       await trx.rollback();
-      throw err;
+      throw this._parseDatabaseError(err, meta);
     }
 
     const updatedRecord = await this.get(doctype, existingDoc.id, tenantId, userId);

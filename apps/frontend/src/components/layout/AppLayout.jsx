@@ -2,14 +2,9 @@ import React, { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import Breadcrumb from './Breadcrumb';
-import { useAuthStore } from '../../store/auth.store';
 
 export default function AppLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
-
-  // If not authenticated, we don't render the layout (the withAuth HOC will redirect)
-  if (!isAuthenticated) return null;
 
   return (
     <div className="flex h-screen overflow-hidden bg-(--color-background)">

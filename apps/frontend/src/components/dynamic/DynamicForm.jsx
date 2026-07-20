@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { ArrowLeft, Save, Trash2, History, Printer, FileDown, FileText } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, History, Printer, FileDown, FileText, AlertTriangle } from 'lucide-react';
 import apiClient from '../../lib/api.client';
 import FormField from './FormField';
 import VersionHistoryModal from './VersionHistoryModal';
@@ -31,7 +31,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       let validator;
       if (['Data', 'Select', 'Link', 'Text', 'Password'].includes(field.fieldtype)) {
         validator = z.string();
-        if (field.is_required) {
+        if (field.is_required && !field.is_hidden) {
           validator = validator.min(1, `${field.label} is required`);
         } else {
           validator = validator.optional().or(z.literal('').or(z.null()));
@@ -67,6 +67,9 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
     resolver: schema.length > 0 ? zodResolver(zodSchema) : undefined,
     defaultValues: {}
   });
+
+  const onLoadCompleteRef = React.useRef(onLoadComplete);
+  onLoadCompleteRef.current = onLoadComplete;
 
   // 3. Fetch Metadata and Data
   const loadForm = useCallback(async () => {
@@ -112,9 +115,9 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       setErrorMsg(err.response?.data?.message || 'Failed to load form configuration or data.');
     } finally {
       setLoading(false);
-      if (onLoadComplete) onLoadComplete();
+      if (onLoadCompleteRef.current) onLoadCompleteRef.current();
     }
-  }, [doctype, recordId, isNew, reset, onLoadComplete]);
+  }, [doctype, recordId, isNew, reset]);
 
   useEffect(() => {
     loadForm();
@@ -124,40 +127,41 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
 
   const [successMsg, setSuccessMsg] = useState('');
 
+  const onInvalid = (errors) => {
+    const errorDetails = Object.values(errors)
+      .map(err => `• ${err.message}`)
+      .join('\n');
+    setErrorMsg(`Validation failed:\n${errorDetails}`);
+  };
+
   // 4. Handle Submit
   const onSubmit = async (data) => {
+    const isNewRecord = isNew;
+    // Capture status directly from row data or form watch state before PUT call
+    const initialStatus = currentStatus;
     setSaving(true);
     setErrorMsg('');
     setSuccessMsg('');
     try {
       let savedRecordId;
-      if (isNew) {
+      if (isNewRecord) {
         const res = await apiClient.post(`/api/v1/doc/${doctype}`, data);
-        savedRecordId = res.data?.data?.name || res.data?.data?.id;
+        savedRecordId = res.data?.data?.id || res.data?.data?.name;
       } else {
         const res = await apiClient.put(`/api/v1/doc/${doctype}/${recordId}`, data);
-        savedRecordId = res.data?.data?.name || res.data?.data?.id || recordId;
+        savedRecordId = res.data?.data?.id || res.data?.data?.name || recordId;
       }
 
-      // Auto Submit Logic
+      // Auto Submit / Workflow Transition Logic
       if (savedRecordId) {
         try {
-          const wfRes = await apiClient.get(`/api/v1/doc/${doctype}/${savedRecordId}/workflow`);
-          const transitions = wfRes.data?.data?.available_transitions || [];
-          const submitAction = transitions.find(t => 
-            t.action === 'Submit' || 
-            t.action_key === 'submit' || 
-            t.next_state === 'Submitted'
-          );
-          
-          if (submitAction) {
-            await apiClient.post(`/api/v1/doc/${doctype}/${savedRecordId}/workflow/transition`, {
-              action_key: submitAction.action_key || submitAction.action,
-              comment: 'Auto-submitted'
-            });
-          }
+          const actionToTrigger = isNewRecord ? 'Save' : 'Update';
+          await apiClient.post(`/api/v1/doc/${doctype}/${savedRecordId}/workflow/transition`, {
+            action: actionToTrigger,
+            comment: isNewRecord ? 'Auto-saved' : 'Auto-updated'
+          });
         } catch (e) {
-          console.warn('Auto-submit workflow failed:', e);
+          console.warn('Auto-workflow transition failed:', e.response?.data || e.message);
         }
       }
 
@@ -168,7 +172,14 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       }, 3000);
     } catch (err) {
       console.error('Submit error:', err);
-      setErrorMsg(err.response?.data?.message || 'Failed to save record.');
+      const apiError = err.response?.data?.error || err.response?.data;
+      const msg = apiError?.message || 'Failed to save record.';
+      const details = apiError?.details || apiError?.errors;
+      if (details && Array.isArray(details)) {
+        setErrorMsg(`${msg}:\n${details.map(e => `• ${e}`).join('\n')}`);
+      } else {
+        setErrorMsg(msg);
+      }
       setSaving(false); // Only set to false on error, keep true during redirect
     }
   };
@@ -242,13 +253,12 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
   }, [schema]);
 
   // Derived state to determine if the form is actually editable
-  const currentStatus = watch('status') || data?.status || 'Draft';
+  const currentStatus = watch('status') || data?.status || 'New';
   const isEditable = useMemo(() => {
     if (readOnly) return false;
-    if (['Locked', 'Cancelled', 'Archived', 'Approved', 'Rejected'].includes(currentStatus)) return false;
-    if (currentStatus === 'Submitted' && !meta?.allow_edit_after_submit) return false;
+    if (['Submitted', 'Cancelled', 'Archived', 'Approved', 'Rejected'].includes(currentStatus)) return false;
     return true;
-  }, [readOnly, currentStatus, meta]);
+  }, [readOnly, currentStatus]);
 
   // Helper to map 1-12 column width to Tailwind grid classes
   const getColSpanClass = (width) => {
@@ -300,7 +310,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       {/* Toolbar (No Card) */}
       <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
           <div className="flex items-center gap-2">
-          {workflow?.available_transitions?.map(t => (
+          {workflow?.available_transitions?.filter(t => !['Save', 'Update', 'Lock', 'Delete', ...(isModal ? ['Unlock'] : [])].includes(t.action))?.map(t => (
             <button 
               key={t.action}
               onClick={() => handleWorkflowTransition(t.action, t.require_comment)}
@@ -321,21 +331,26 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
               </button>
             </>
           )}
-          {isEditable && (
             <button 
-              onClick={handleSubmit(onSubmit)}
+              type="submit"
+              form="dynamic-form"
               disabled={saving || loading}
               className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
             >
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Saving...' : (currentStatus === 'Draft' ? 'Update' : 'Save')}
             </button>
-          )}
         </div>
       </div>
 
       {errorMsg && (
-        <div className="p-3 bg-red-50 text-red-600 border border-red-200 rounded">
-          {errorMsg}
+        <div className="p-4 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg flex flex-col gap-1.5 text-sm font-medium">
+          <div className="flex items-center gap-2 text-amber-900 font-bold">
+            <AlertTriangle size={18} className="text-amber-600" />
+            <span>Warning</span>
+          </div>
+          <div className="whitespace-pre-line pl-6">
+            {errorMsg}
+          </div>
         </div>
       )}
 
@@ -352,7 +367,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
             Loading form...
           </div>
         ) : (
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form id="dynamic-form" onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
             {Object.entries(sections).map(([sectionName, fields]) => (
               fields.length > 0 && (
                 <div key={sectionName} className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden">

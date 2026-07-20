@@ -9,7 +9,8 @@ import CacheEngine from '../CacheEngine/CacheEngine.js';
 import EventEngine from '../EventEngine/EventEngine.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'framee-super-secret-key';
-const JWT_EXPIRES_IN = '15m'; // 15 minutes
+const rawExpiresIn = process.env.JWT_EXPIRES_IN || '1d';
+const JWT_EXPIRES_IN = isNaN(rawExpiresIn) ? rawExpiresIn : Number(rawExpiresIn);
 const REFRESH_TTL_SEC = 7 * 24 * 60 * 60; // 7 days in seconds
 const MAX_FAILED_LOGINS = 5;
 const LOCK_DURATION_MINUTES = 30;
@@ -55,7 +56,7 @@ class AuthEngine {
       await knex('sys_user').where({ id: user.id }).update({ failed_login_count: 0, locked_until: null });
     }
 
-    if (user.is_deleted || (user.status !== 'Submitted' && user.status !== 'Active')) {
+    if (user.is_deleted || (user.status !== 'Saved' && user.status !== 'New' && user.status !== 'Draft')) {
       throw new AuthenticationError(`User account is not active`);
     }
 
@@ -178,7 +179,7 @@ class AuthEngine {
     
     const knex = DatabaseEngine.getRawConnection();
     const user = await knex('sys_user').where({ email }).first();
-    if (!user || user.is_deleted || (user.status !== 'Submitted' && user.status !== 'Active')) {
+    if (!user || user.is_deleted || (user.status !== 'Saved' && user.status !== 'New' && user.status !== 'Draft' && user.status !== 'Submitted' && user.status !== 'Active')) {
       throw new AuthenticationError('Invalid email or PIN');
     }
 
