@@ -48,18 +48,24 @@ It exists because ERP systems fundamentally involve human decision-making proces
 - Only one workflow can be active per DocType at a time.
 
 ### FR-002 State Definition
-- Each state must have a `name`, `label`, `style` (for color coding), and a `document_status` mapping (Draft, Pending, Approved, Rejected, Cancelled).
-- Each DocType with an active workflow must have a `workflow_state` field that stores the current state name.
-- States are terminal (no outgoing transitions) or intermediate (have at least one outgoing transition).
+- Each state is stored in `sys_state` table with: `name`, `label`, `style` (for color coding), `is_terminal` flag.
+- States are referenced by name in `sys_workflow.from_state` and `sys_workflow.to_state`.
+- Document status is stored directly in the record's `status` column (not a separate `workflow_state` field).
+- States are terminal (`is_terminal = 1`) if they have no outgoing transitions.
 
 ### FR-003 Transition Definition
-- Each transition must define:
-  - `from_state`: starting state
-  - `to_state`: target state
-  - `action`: button label shown to the user (e.g., "Approve", "Reject", "Submit for Review")
-  - `allowed_roles`: list of roles authorized to execute this transition
-  - `require_comment`: whether a comment is mandatory before transitioning
-  - `condition_field` / `condition_value`: optional condition that must be true on the document
+- In the **refactored schema**, each row in `sys_workflow` IS one transition (not a container for states/transitions). Fields:
+  - `doctype`: target table name (e.g., `sys_user`)
+  - `from_state`: starting state name
+  - `to_state`: target state name
+  - `action`: action name (references `sys_action.name`)
+  - `allow_roles`: JSON array of role names authorized to execute this transition
+  - `require_comment`: `0` or `1`
+  - `condition_field` / `condition_value`: optional field-value condition
+  - `sort_order`: display order
+  - `status`: must be `'Saved'` to be active
+- Action definitions are stored in `sys_action` table with: `name`, `key`, `label`, `style`.
+- The initial state is determined by the `from_state` of the transition with the lowest `sort_order`.
 
 ### FR-004 Transition Enforcement
 - When a user attempts to submit, cancel, or change a workflow state, the Workflow Engine validates:
@@ -78,6 +84,16 @@ It exists because ERP systems fundamentally involve human decision-making proces
 - This allows notification plugins and business logic plugins to react to workflow events.
 
 ### FR-007 Read-Only Enforcement
+- Documents in terminal states (e.g., `Saved`, `Locked`) cannot be updated via the CRUD Engine unless the Workflow Engine first transitions them to an editable state.
+
+### FR-007b Auto-Save Log Suppression
+- When the CRUD Engine triggers a post-save workflow transition (e.g., `'Save'` action after insert), it passes `comment = 'Auto-saved'` or `comment = 'Auto-updated'`.
+- The Workflow Engine **skips writing to `{table}_logs`** when the comment is `'Auto-saved'` or `'Auto-updated'`.
+- This ensures the Activity Timeline shows only one entry for the save event (the `'Created'` log written by the CRUD Engine directly), not two entries.
+
+### FR-008 Workflow History (`getHistory`)
+- The `getHistory(doctype, docId, tenantId)` method returns all logs from `{table_name}_logs` for a given record, ordered by `created_at` descending.
+- This is the data source for the Activity Timeline in the frontend (both pageIndex and modalView).
 - Documents in a terminal state (Approved, Rejected) or in the Submitted document status are read-only.
 - Only a `cancel` transition can unlock a submitted document for editing.
 

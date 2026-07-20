@@ -82,10 +82,18 @@ Framee uses **two separate logging systems** that serve different purposes:
 
 ## Functional Requirements
 
-### FR-001 Event-Driven Capture (Both Logs)
-- The Audit Engine subscribes to the Event Engine.
-- No application code calls `auditEngine.log()` directly.
-- On every relevant event, the engine writes asynchronously to **both** `<doctype>_logs` and `sys_audit_log`.
+### FR-001 Two-Tier Logging — Actual Implementation
+
+> **Important: The actual implementation differs from the original design in the following way:**
+
+| Log | Written by | When |
+|-----|-----------|------|
+| **Local Log** (`{table}_logs`) | **CRUD Engine** (synchronous, inside the DB transaction) | On insert, workflow transition |
+| **Global Log** (`sys_audit_log`) | **Audit Engine** (async event subscriber) | On all write events |
+
+- The CRUD Engine writes directly to `{table}_logs` inside the same transaction as the record insert. If the transaction rolls back, the log entry is also rolled back.
+- The Audit Engine subscribes to after-event emissions for the global `sys_audit_log` only.
+- No application code calls `auditEngine.log()` directly — the CRUD Engine handles local logs, the Audit Engine handles global logs.
 - Exception: social events (COMMENT, LIKE, UNLIKE) write to Local Log only.
 - Exception: LOGIN/LOGOUT, PERMISSION_CHANGED write to Global Log only.
 
@@ -126,11 +134,13 @@ Framee uses **two separate logging systems** that serve different purposes:
 - Increments the comment count aggregate.
 - Comments are NOT immutable — the author can edit or delete their own comment within a configurable window (`COMMENT_EDIT_WINDOW_MINUTES`, default: 15).
 
-### FR-005 Like System (Local Log)
+### FR-005 Like / Unlike System (Local Log)
 - `POST /api/v1/doc/{DocType}/{id}/like` — toggles like for current user.
-- Creates `LIKE` or `UNLIKE` entry in `<doctype>_logs`.
-- Stores unique like in `<doctype>_likes` table.
+- **Both Like and Unlike are tracked** as separate log entries in `{table}_logs`.
+  - `LIKE`: creates a `LIKE` entry in `{table}_logs` and stores in `{table}_likes`.
+  - `UNLIKE`: creates an `UNLIKE` entry in `{table}_logs` (does NOT delete the `LIKE` entry — both are preserved for timeline history).
 - Returns `{ liked: true/false, total: N }`.
+- The Activity Timeline shows both `Liked` (pink) and `Unliked` (gray) actions separately, providing a full interaction history.
 
 ### FR-006 Global Log Immutability
 - `sys_audit_log` has no `UPDATE` or `DELETE` API endpoint.
@@ -144,13 +154,21 @@ Framee uses **two separate logging systems** that serve different purposes:
 - Persistent failures are logged to application error log.
 
 ### FR-008 Querying
-- Local Log: `GET /api/v1/logs/{doctype}` (DocType-level), `GET /api/v1/logs/{doctype}/{id}` (record-level).
-- Global Log: `GET /api/v1/audit` (admin), `GET /api/v1/audit/doc/{doctype}/{id}`, `GET /api/v1/audit/user/{id}`.
+- **Activity Timeline** (frontend) uses: `GET /api/v1/audit/doc/{doctype}/{id}` (record-level) or `GET /api/v1/audit?doctype={name}` (DocType-level).
+- These endpoints query `{table_name}_logs` (local log) — not `sys_audit_log`.
+- Global Log: `GET /api/v1/audit` (admin), `GET /api/v1/audit/user/{id}` — queries `sys_audit_log`.
 - Results paginated (max 100 per page).
 
 ### FR-009 Retention Policy
 - Local Log: configurable retention (default: 180 days). Old entries soft-purged.
 - Global Log: retained indefinitely by default. Optional cold export before deletion.
+
+### FR-010 Activity Timeline Display Format
+- Each timeline row displays: **User Avatar**, **User Name**, **Action Label**, `, ID {doc_id}`, and if `content` is non-empty: `({content})`.
+- Example with content: `Sutikno Liked, ID 7 (Budi Santoso)`
+- Example without content: `Sutikno Created, ID 7`
+- The comma (`,`) has no space before it — format is `{Action}, ID {id}` not `{Action} , ID {id}`.
+- Action label colors: green=Created, blue=Updated, red=Deleted, orange=Locked, purple=Unlocked, teal=Submitted, pink=Liked, gray=Unliked, indigo=Commented.
 
 ---
 

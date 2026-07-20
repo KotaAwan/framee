@@ -47,6 +47,8 @@ Its purpose is to translate metadata definitions into safe, validated, permissio
 
 ### FR-002 Metadata-Driven Validation
 - On every `create` and `update`, the engine must validate all field values against their DocField definitions: required check, type check, options check (for Select fields), and Link integrity check (for Link fields).
+- **Hidden fields are excluded from required validation.** Fields with `is_hidden = 1` are skipped even if `is_required = 1`. This prevents false validation errors for system-generated fields (e.g., `code`, `google_id`, `pin_hash`) that are hidden from the user form but populated by the engine.
+- **Duplicate key detection:** When the database returns error code `ER_DUP_ENTRY` (MySQL 1062), the engine parses the error message to identify the violated unique key, matches it to the corresponding DocField label, and re-throws it as a user-readable `ValidationError` instead of a raw 500 error.
 
 ### FR-003 Permission Enforcement
 - Every operation must check permissions via the Permission Engine before execution.
@@ -60,8 +62,15 @@ Its purpose is to translate metadata definitions into safe, validated, permissio
   - `{doctype}.before_submit` / `{doctype}.after_submit`
 - Before events may cancel the operation by throwing an error.
 
-### FR-005 Audit Trail
-- Every successful write operation (create, update, delete, submit) must be recorded in `sys_audit_log` with the user ID, timestamp, old values, and new values (diff).
+### FR-005 Audit Trail (Two-Tier Logging)
+- Every successful write operation (create, update, delete) writes **directly to `{table_name}_logs`** (local log) inside the same database transaction as the primary record insert/update. This is a synchronous write — not async.
+- The `{table_name}_logs` entry stores: `doc_id`, `status` (e.g., `'Created'`), `content` (record name or null), `created_by`, `created_at`.
+- The `sys_docfield` table is excluded from local log writes to avoid circular meta-logging.
+- Global compliance audit (`sys_audit_log`) is handled separately by the Audit Engine via event subscription.
+
+### FR-005b Auto-Save Log Suppression
+- When the Workflow Engine executes a transition triggered by the CRUD save flow with `comment = 'Auto-saved'` or `comment = 'Auto-updated'`, that transition is **not** written to `{table_name}_logs`.
+- This prevents the Activity Timeline from showing redundant "Auto-saved" entries alongside the real "Created" entry that the CRUD Engine already wrote.
 
 ### FR-006 Document Lifecycle Gate
 - Before executing any write, update, delete, or submit, the CRUD Engine must invoke `DocumentLifecycleEngine.canPerform(doctype, docId, action, user)` and abort with 403/409 if the gate returns false.
@@ -78,6 +87,15 @@ Its purpose is to translate metadata definitions into safe, validated, permissio
 - A `cancel` operation sets `status = 'Cancelled'` with reason; it does not delete data.
 - An `amend` operation clones the document to a new record with `amended_from` populated, and the new record starts as `Draft`.
 
+### FR-008c Code Generation via NamingEngine
+- On every `insert`, the CRUD Engine delegates code generation to `NamingEngine.generateCode(meta, data, tableName)`.
+- The generated `code` is included in the record payload before the DB insert.
+- If `auto_code` is not set, the NamingEngine defaults to UUID generation.
+- See `NamingEngine` docs for all supported patterns.
+
+### FR-008d Child Table Logging
+- When a parent record is inserted with child table data (Table-type fields), each child row insertion also writes a corresponding log entry to `{child_table_name}_logs` within the same transaction.
+
 ### FR-008 List with Filters, Sort, and Pagination
 - The list operation must support field-based filtering, multi-field sorting, and cursor/offset pagination.
 - Filter fields and sort options must be limited to fields where the user has read permission.
@@ -90,9 +108,9 @@ Its purpose is to translate metadata definitions into safe, validated, permissio
                  Incoming Request (DocType, action, data)
                               │
                               ▼
-                 ┌─────────────────────────┐
+                 ┌──────────────────────────┐
                  │      CRUD Engine         │
-                 │                         │
+                 │                          │
                  │  1. Load Metadata        │ ← Metadata Engine
                  │  2. Check Permission     │ ← Permission Engine
                  │  3. Lifecycle Gate       │ ← Document Lifecycle Engine
@@ -115,11 +133,13 @@ Its purpose is to translate metadata definitions into safe, validated, permissio
 | 3. Lifecycle Gate | Call `canPerform()` — checks document `status` and allowed transitions | Abort: 409 Operation not allowed on current status |
 | 4. Validate Input | Validate fields against DocField rules | Abort: 422 Validation Error |
 | 5. Emit Before Event | Allow hooks to cancel or modify data | Abort if hook throws |
-| 6. Execute DB Operation | Run insert/update/select/delete | Abort: 500 DB Error |
-| 7. Emit After Event | Notify listeners (Audit Engine, Version Engine react async) | Non-fatal: log failure, continue |
+| 6. Execute DB Operation | Run insert/update/select/delete (inside transaction) | Abort: 500 DB Error, transaction rolled back |
+| 6a. Write Local Log | Write to `{table}_logs` inside the same transaction | Rolled back with record if DB error |
+| 6b. Parse DB Error | Catch `ER_DUP_ENTRY` → convert to `ValidationError` with field label | Returns 422 instead of 500 |
+| 7. Emit After Event | Notify listeners (Audit Engine async) | Non-fatal: log failure, continue |
 | 8. Return Result | Return formatted response | — |
 
-> **Note:** Audit logging is handled by the **Audit Engine** as an event subscriber — the CRUD Engine does not write directly to `sys_audit_log`. This decouples auditing from the critical path.
+> **Note:** Local log (`{table}_logs`) is written **synchronously inside the same transaction** as the record. Global audit log (`sys_audit_log`) is written **asynchronously** by the Audit Engine as an event subscriber.
 
 ---
 
@@ -287,6 +307,8 @@ The CRUD Engine is consumed by the Dynamic Form and Dynamic List components:
 - Only one record per DocType can have the same value for a field marked as `is_unique`.
 - Submitted documents cannot be updated. Any update attempt returns a 409 Conflict.
 - A document in a workflow that requires a specific role for transition cannot be moved by a user without that role.
+- **Duplicate key violations (MySQL `ER_DUP_ENTRY` / errno 1062)** are caught and converted to `ValidationError` with human-readable message: e.g., `"Email 'john@example.com' is already registered and must be unique."`. The engine matches the constraint name to the DocField label using naming conventions: `{table_name}_{fieldname}_unique` or `{fieldname}_unique`.
+- **Hidden fields (`is_hidden = 1`) are excluded from required validation**, even if `is_required = 1`. This is critical for system-managed fields like `code` (generated by NamingEngine), `google_id`, and `pin_hash`.
 
 ---
 

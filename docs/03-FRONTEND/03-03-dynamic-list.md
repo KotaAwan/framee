@@ -115,31 +115,32 @@ It is the first screen a user sees when navigating to a DocType. From here, user
 
 ---
 
-### FR-009 Per-Row Action Icons
+### FR-009 Per-Row Action Columns (Split Design)
 
-Each row in the ACTION column shows the following icons (visibility gated by permission and DocType config):
+The table has **two separate action columns** at the right side of every row:
 
-```
-ACTION column per row:
-[🔒 Lock]  [👁 View]  [✏ Edit]  [❤ 0]  [💬 0]
-```
+#### Column 1: `Action` header (left-aligned)
+Contains lifecycle buttons, visibility depends on record `status`:
 
-| Icon | Component | Condition | Behavior |
-|------|-----------|-----------|----------|
-| 🔒 Lock (green) | `LockIcon` (Lucide) | status = Locked | Indicates locked; triggers Unlock if permitted |
-| 🔓 Unlock (red) | `UnlockIcon` (Lucide) | status ≠ Locked | Triggers Lock action if permitted |
-| 👁 Eye | `EyeIcon` (Lucide) | Always visible | Opens `modalView` for this record |
-| ✏ Edit | `EditIcon` (Lucide) | `can_write = true` AND status allows edit | Navigates to `pageEdit` |
-| 🗑 Trash | `Trash2Icon` (Lucide) | `can_delete = true` | Delete with confirmation |
-| ❤ N | `HeartIcon` (Lucide) | Always | Shows Like count. Click = toggle Like |
-| 💬 N | `MessageSquareIcon` (Lucide) | Always | Shows Comment count. Click = opens `modalView` scrolled to comment input |
-| 🖨 Print | `PrinterIcon` (Lucide) | `allow_print = true` on DocType | Opens print preview for this record |
+| Status | Buttons shown |
+|--------|---------------|
+| `Saved` | 🔒 Lock (green) → Unlock — opens confirm modal; 👁 View — opens QuickView; 🖨 Print |
+| `Draft` | 🔓 Unlock (red) → Lock — opens confirm modal; ✏ Edit — navigates to form; 🗑 Delete — opens confirm modal |
+| `New` | ✏ Edit — navigates to form |
 
-> **Rules:**
-> - Lock/Unlock icons are toggled by calling `POST /api/v1/doc/{DocType}/{id}/lock` or `unlock`.
-> - Like and Comment counts are read from `<doctype>_logs` aggregate query.
-> - Edit button is hidden (not just disabled) when `can_write = false`.
-> - All icons use Lucide with Tailwind color classes (`text-green-600`, `text-red-500`, `text-pink-500`, etc.).
+#### Column 2: Empty header `""` (left-aligned)
+Always visible, contains social engagement buttons:
+
+| Icon | Behavior |
+|------|----------|
+| ❤ N | Shows Like count. Click opens QuickView modal |
+| 💬 N | Shows Comment count. Click opens QuickView modal |
+
+> **Table Header Design:** The two action columns share a single merged `<th colSpan={2}>` with label `"Action"` (left-aligned). The socials column does not render its own header.
+
+> **API for Lock/Unlock/Delete transitions:** All status transitions call `POST /api/v1/doc/{DocType}/{id}/workflow/transition` with `{ action: 'Lock'/'Unlock'/'Delete', comment: '...' }`. NOT the old `/lock` or `/unlock` endpoints.
+
+> **All icons use Lucide** with Tailwind color classes (`text-green-600`, `text-red-600`, etc.).
 
 ---
 
@@ -225,9 +226,10 @@ Triggered by clicking the 👁 Eye icon on any row. The modal opens as a full-he
 - Form Card is rendered in **read-only** mode (same layout as `pageAdd` but all inputs are disabled/display-only).
 - Like button in the modal toggles the current user's like on this record.
 - Comment input (`<textarea>`) + `[Kirim]` button → `POST /api/v1/doc/{DocType}/{id}/comment`.
-- Activity Timeline is loaded from `GET /api/v1/logs/{doctype}/{id}` (data from `<doctype>_logs` table).
-- Timeline shows: action badge, user avatar + name, timestamp, summary. Reverse chronological.
+- Activity Timeline is loaded from `GET /api/v1/audit/doc/{doctype}/{id}` (data from `{doctype}_logs` table, NOT `sys_audit_log`).
+- Timeline shows: user avatar, user name, action label, `, ID {doc_id}`, and `({content})` if content is present. Reverse chronological.
 - Comments appear in the timeline alongside system events.
+- **Closing the QuickView modal triggers a list data refresh** (`refreshData()` is called on modal close) to keep the table up to date.
 
 ---
 
@@ -247,11 +249,12 @@ The pageIndex (list page) shows the **Activity Timeline** section below the pagi
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Data source:** `GET /api/v1/logs/{doctype}?limit=20` — pulls from `<doctype>_logs` table.
+**Data source:** `GET /api/v1/audit?doctype={name}&limit=20` — pulls from `{table_name}_logs` table (NOT `sys_audit_log`).
 - Default: shows latest 20 events across ALL records of this DocType.
-- Paginated: `[Show more]` link at bottom.
-- Each row: user avatar, user name, record ID + title, action badge (Created / Updated / Deleted / Locked / Unlocked / Commented / Liked), timestamp.
-- Action badge uses color: green = Created, blue = Updated, red = Deleted, orange = Locked, teal = Unlocked, purple = Commented, pink = Liked.
+- Paginated: `[Load More...]` button at bottom.
+- Each row: user avatar, user name, action label, `, ID {doc_id}`, and `({content})` if content is non-empty.
+- Action label uses color: green=Created, blue=Updated, red=Deleted, orange=Locked, purple=Unlocked, indigo=Commented, pink=Liked, gray=Unliked.
+- **Format rule**: comma with no space before it: `Sutikno Liked, ID 7` not `Sutikno Liked , ID 7`.
 
 ---
 
