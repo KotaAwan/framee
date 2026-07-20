@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { useAuthStore } from '../store/auth.store';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -17,7 +19,7 @@ export default function Login() {
     
     try {
       await login(email, password);
-      router.push('/dashboard');
+      router.push('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
     } finally {
@@ -57,19 +59,26 @@ export default function Login() {
             />
           </div>
           
-          <div className="mb-6">
+          <div className="mb-6 relative">
             <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
               Password
             </label>
             <input
               id="password"
-              type="password"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+              type={showPassword ? 'text' : 'password'}
+              className="w-full px-3 py-2 pr-10 border border-gray-300 rounded focus:outline-none focus:border-blue-500"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600 focus:outline-none"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
           </div>
           
           <button

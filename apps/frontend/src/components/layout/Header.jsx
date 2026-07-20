@@ -47,8 +47,8 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
 
         <div className="flex items-center gap-3 border-l border-(--color-border) pl-4 relative">
           <div className="flex flex-col items-end hidden sm:flex">
-            <span className="text-sm font-semibold text-(--color-text)">{user?.fullName || user?.email || 'System Administrator'}</span>
-            <span className="text-[11px] text-(--color-muted) mt-0.5">{user?.is_system_user ? 'Super Admin' : (user?.roles?.[0] || 'User')}</span>
+            <span className="text-sm font-semibold text-(--color-text)">{user?.name || user?.fullName || 'System Administrator'}</span>
+            <span className="text-[11px] text-(--color-muted) mt-0.5">{user?.roles?.[0] || 'User'}</span>
           </div>
           
           <button 
@@ -60,7 +60,7 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
                 <Image src={user.avatarUrl} alt="Avatar" fill className="object-cover" />
               ) : (
                 <span className="uppercase">
-                  {user?.fullName ? user.fullName.split(' ').map(n => n[0]).slice(0,2).join('') : 'AD'}
+                  {(user?.name || user?.fullName) ? (user.name || user.fullName).split(' ').map(n => n[0]).slice(0,2).join('') : 'AD'}
                 </span>
               )}
             </div>
@@ -70,8 +70,8 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
           {userMenuOpen && (
             <div className="absolute top-10 right-0 mt-2 w-48 rounded-md border border-(--color-border) bg-(--color-surface) shadow-lg z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 flex flex-col">
-                <span className="text-sm font-medium text-(--color-text)">{user?.fullName || user?.email || 'User'}</span>
-                <span className="text-xs text-(--color-muted) truncate">{user?.email}</span>
+                <span className="text-sm font-medium text-(--color-text)">{user?.name || user?.fullName || 'User'}</span>
+                <span className="text-xs text-(--color-muted) truncate">{user?.roles?.[0] || 'User'}</span>
               </div>
               <div className="py-1">
                 <button className="flex w-full items-center px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover)">

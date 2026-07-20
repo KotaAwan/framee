@@ -21,7 +21,7 @@ export default function Breadcrumb({ mode }) {
           res.data.data.forEach(mod => {
             if (mod.shortcuts) {
               mod.shortcuts.forEach(sc => {
-                map[sc.target] = { module: mod.name, label: sc.label, icon: sc.icon };
+                map[sc.doctype] = { module: mod.name, label: sc.name, icon: sc.icon };
               });
             }
           });
@@ -36,29 +36,24 @@ export default function Breadcrumb({ mode }) {
   // Let's customize breadcrumb display
   const displaySegments = [];
 
-  if (pathSegments[0] === 'doctype' || pathSegments[0] === 'document') {
-    const target = pathSegments[1];
-    if (target && moduleMap[target]) {
-      displaySegments.push({ label: moduleMap[target].module, href: '#' });
-      displaySegments.push({
-        label: moduleMap[target].label,
-        href: `/doctype/${target}`,
-        icon: moduleMap[target].icon
-      });
+  // Check if first segment is a module by checking if the second segment is a known doctype/target
+  const isModuleRoute = pathSegments.length >= 2 && moduleMap[pathSegments[1]];
 
-      if (mode) {
-        displaySegments.push({ label: mode, href: '#' });
-      } else if (pathSegments.length > 2) {
-        displaySegments.push({ label: pathSegments[2] === 'new' ? 'New' : pathSegments[2], href: router.asPath });
-      }
-    } else {
-      // Fallback
-      displaySegments.push({ label: target, href: `/doctype/${target}` });
-      if (mode) {
-        displaySegments.push({ label: mode, href: '#' });
-      } else if (pathSegments.length > 2) {
-        displaySegments.push({ label: pathSegments[2], href: router.asPath });
-      }
+  if (isModuleRoute) {
+    const target = pathSegments[1];
+    const moduleName = pathSegments[0]; // e.g. system
+    
+    displaySegments.push({ label: moduleMap[target].module, href: '#' });
+    displaySegments.push({
+      label: moduleMap[target].label,
+      href: `/${moduleName}/${target}`,
+      icon: moduleMap[target].icon
+    });
+
+    if (mode) {
+      displaySegments.push({ label: mode, href: '#' });
+    } else if (pathSegments.length > 2) {
+      displaySegments.push({ label: pathSegments[2] === 'new' ? 'New' : pathSegments[2], href: router.asPath });
     }
   } else {
     // Normal mapping
@@ -85,7 +80,15 @@ export default function Breadcrumb({ mode }) {
                 {segment.label}
               </span>
             ) : (
-              <Link href={segment.href} className="hover:text-(--color-text) transition-colors flex items-center gap-1.5">
+              <Link 
+                href={segment.href} 
+                className="hover:text-(--color-text) transition-colors flex items-center gap-1.5"
+                onClick={(e) => {
+                  if (router.asPath.split('?')[0] === segment.href) {
+                    e.preventDefault();
+                  }
+                }}
+              >
                 {segment.label}
               </Link>
             )}

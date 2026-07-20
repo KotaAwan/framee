@@ -7,7 +7,7 @@ import { useRouter } from 'next/router';
 import Breadcrumb from '../layout/Breadcrumb';
 import Icon from '../ui/Icon';
 
-export default function DynamicList({ doctype }) {
+export default function DynamicList({ doctype, module }) {
   const router = useRouter();
   
   // State for data
@@ -37,6 +37,8 @@ export default function DynamicList({ doctype }) {
     fetchMeta();
   }, [doctype]);
 
+  const [refreshActivity, setRefreshActivity] = useState(0);
+
   const fetchData = React.useCallback(async () => {
     // Push state update to microtask queue to avoid synchronous setState in effect
     await Promise.resolve();
@@ -51,6 +53,7 @@ export default function DynamicList({ doctype }) {
         setData(results);
         setTotalRecords(res.data.data.total || results.length);
       }
+      setRefreshActivity(prev => prev + 1);
     } catch (err) {
       console.error('Failed to fetch list data', err);
     } finally {
@@ -66,7 +69,7 @@ export default function DynamicList({ doctype }) {
   const columns = useMemo(() => {
     if (!meta || !meta.fields) return [];
     return meta.fields
-      .filter(f => f.in_list_view)
+      .filter(f => f.in_list)
       .filter(f => !(doctype === 'sys_user' && ['password', 'pin', 'google_id', 'avatar_url', 'password_hash', 'pin_hash'].includes(f.fieldname)))
       .sort((a, b) => (a.list_view_seq || 99) - (b.list_view_seq || 99))
       .map(f => ({
@@ -226,7 +229,7 @@ export default function DynamicList({ doctype }) {
           
           <button 
             className="flex items-center justify-center bg-(--color-primary) text-white w-9 h-9 rounded-md hover:bg-(--color-primary-hover) transition-colors"
-            onClick={() => router.push(`/document/${doctype}/new`)}
+            onClick={() => router.push(`/${module || 'doctype'}/${doctype}/new`)}
             title="Create New"
           >
             <Plus size={18} />
@@ -241,6 +244,7 @@ export default function DynamicList({ doctype }) {
           columns={columns} 
           loading={loading}
           doctype={doctype}
+          module={module}
           page={page}
           pageSize={pageSize}
           totalRecords={totalRecords}
@@ -254,7 +258,7 @@ export default function DynamicList({ doctype }) {
     </div>
 
       {/* Activity Timeline */}
-      <ActivityTimeline doctype={doctype} />
+      <ActivityTimeline doctype={doctype} refreshTrigger={refreshActivity} />
     </div>
   );
 }

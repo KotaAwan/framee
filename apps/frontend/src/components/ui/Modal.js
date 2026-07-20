@@ -26,7 +26,7 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 sm:p-0">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-20 p-4 sm:p-0">
       <div 
         className={cn(
           "bg-white dark:bg-slate-900 rounded-lg shadow-lg w-full max-w-lg overflow-hidden flex flex-col",

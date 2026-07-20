@@ -46,7 +46,28 @@ export default function MenuTree({ sidebarOpen, setSidebarOpen }) {
 
   return (
     <ul className="space-y-2 px-2">
-      {modules.map((group) => {
+      {/* Static Dashboard Link */}
+      <li className="flex flex-col mb-4">
+        <Link
+          href="/dashboard"
+          onClick={(e) => {
+            if (router.pathname === '/dashboard' || router.pathname === '/') {
+              e.preventDefault();
+            }
+          }}
+          className={clsx(
+            "flex items-center gap-3 px-4 py-3 text-sm font-bold tracking-wider uppercase transition-colors w-full rounded-md",
+            router.pathname === '/dashboard' || router.pathname === '/'
+              ? "text-white bg-(--color-primary) shadow-sm"
+              : "text-(--color-sidebar-text) hover:text-white hover:bg-(--color-sidebar-hover)"
+          )}
+        >
+          <Icon name="Home" size={16} className="shrink-0" />
+          {sidebarOpen && <span>Dashboard</span>}
+        </Link>
+      </li>
+
+      {modules.filter(group => group.shortcuts && group.shortcuts.length > 0).map((group) => {
         const isOpen = openGroups[group.name];
         const groupIconName = group.icon || (group.name === 'System' || group.name === 'Settings' ? 'Settings' : 'Box');
 
@@ -74,14 +95,20 @@ export default function MenuTree({ sidebarOpen, setSidebarOpen }) {
                 {/* Vertical line indicator */}
                 <div className="absolute left-6 top-0 bottom-0 w-px bg-gray-700/50"></div>
                 {group.shortcuts.map(shortcut => {
-                  const href = shortcut.type === 'DocType' ? `/doctype/${shortcut.target}` : shortcut.target;
-                  const isActive = router.asPath.startsWith(href) || 
-                                   (href === '/dashboard' && router.pathname === '/');
+                  const moduleSlug = group.slug;
+                  let href = `/${moduleSlug}/${shortcut.doctype}`;
+
+                  const isActive = router.asPath.startsWith(href);
                   
                   return (
                     <li key={shortcut.id} className="relative">
                       <Link
                         href={href}
+                        onClick={(e) => {
+                          if (isActive && router.asPath === href) {
+                            e.preventDefault();
+                          }
+                        }}
                         className={clsx(
                           "flex items-center gap-3 px-4 py-2 text-sm font-medium transition-all ml-8 rounded-l-full",
                           isActive 
@@ -91,7 +118,7 @@ export default function MenuTree({ sidebarOpen, setSidebarOpen }) {
                       >
                         {/* Dynamic Shortcut Icon */}
                         <Icon name={shortcut.icon} size={14} fallback="Database" className={isActive ? "text-(--color-primary)" : "text-gray-500"} />
-                        <span>{shortcut.label}</span>
+                        <span>{shortcut.name}</span>
                       </Link>
                     </li>
                   );

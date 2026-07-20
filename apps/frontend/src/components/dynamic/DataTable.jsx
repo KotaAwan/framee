@@ -4,15 +4,18 @@ import {
   getCoreRowModel,
   flexRender,
 } from '@tanstack/react-table';
-import { Eye, Edit, Lock, Unlock, Trash2, Heart, MessageSquare, ChevronLeft, ChevronRight, Printer } from 'lucide-react';
+import { Eye, Edit, Trash2, Heart, MessageSquare, ChevronLeft, ChevronRight, Printer, Unlock, Lock } from 'lucide-react';
 import { useRouter } from 'next/router';
 import QuickViewModal from './QuickViewModal';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
 
 export default function DataTable({
   data,
   columns,
   loading,
   doctype,
+  module,
   page,
   pageSize,
   totalRecords,
@@ -24,6 +27,7 @@ export default function DataTable({
 }) {
   const router = useRouter();
   const [viewRecordId, setViewRecordId] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
   // Dynamically generate column definitions for TanStack Table
   const tableColumns = useMemo(() => {
@@ -76,41 +80,80 @@ export default function DataTable({
       cell: ({ row }) => {
         const recordId = row.original.id || row.original.name;
 
-        // Mock permission/status flags for now
-        const status = row.original.status || 'Draft';
-        const isLocked = status === 'Locked';
+        const status = row.original.status || (row.original.docstatus === 1 ? 'Submitted' : (row.original.docstatus === 2 ? 'Cancelled' : 'Draft'));
+        const isLocked = row.original.is_terminal_state || status === 'Locked' || status === 'Submitted' || row.original.docstatus === 1;
 
-        const handleToggleLock = async () => {
-          try {
-            const newStatus = isLocked ? 'Active' : 'Locked';
-            const { default: apiClient } = await import('../../lib/api.client');
-            await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/toggle-lock`, { status: newStatus });
-            if (refreshData) refreshData();
-          } catch (err) {
-            console.error('Failed to toggle lock status', err);
-          }
-        };
+
 
         return (
           <div className="flex items-center justify-end gap-3 text-(--color-muted)">
-            {/* Status-based Actions */}
+            {/* Lock/Unlock Toggle Icon based on state */}
+            {isLocked ? (
+              <button title="Unlock (Revert to Draft)" className="text-green-600 hover:text-green-700 transition-colors" onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  title: 'Unlock Record',
+                  message: 'Are you sure you want to unlock this record?',
+                  onConfirm: async () => {
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    try {
+                      const apiClient = (await import('../../lib/api.client')).default;
+                      await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/unlock`);
+                      if (refreshData) refreshData();
+                    } catch (e) {
+                      console.error(e);
+                      alert('Failed to unlock record');
+                    }
+                  }
+                });
+              }}>
+                <Lock size={16} />
+              </button>
+            ) : (
+              <button title="Lock (Submit)" className="text-red-600 hover:text-red-700 transition-colors" onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  title: 'Submit Record',
+                  message: 'Are you sure you want to submit/lock this record?',
+                  onConfirm: async () => {
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    try {
+                      const apiClient = (await import('../../lib/api.client')).default;
+                      await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/submit`);
+                      if (refreshData) refreshData();
+                    } catch (e) {
+                      console.error(e);
+                      alert('Failed to submit record');
+                    }
+                  }
+                });
+              }}>
+                <Unlock size={16} />
+              </button>
+            )}
+
+            {/* Standard Actions */}
             {!isLocked ? (
               <>
-                <button title="Lock" onClick={handleToggleLock} className="text-red-600 hover:text-red-700 transition-colors">
-                  <Unlock size={16} />
-                </button>
-                <button title="Edit" className="hover:text-(--color-primary) transition-colors" onClick={() => router.push(`/document/${doctype}/${recordId}`)}>
+                <button title="Edit" className="hover:text-(--color-primary) transition-colors" onClick={() => router.push(`/${module || 'doctype'}/${doctype}/${recordId}`)}>
                   <Edit size={16} />
                 </button>
-                <button title="Delete" className="text-red-500 hover:text-red-700 transition-colors" onClick={() => { if(confirm('Are you sure you want to delete this record?')) { /* Mock delete */ } }}>
+                <button title="Delete" className="text-red-500 hover:text-red-700 transition-colors" onClick={() => { 
+                  setConfirmModal({
+                    isOpen: true,
+                    title: 'Delete Record',
+                    message: 'Are you sure you want to delete this record?',
+                    onConfirm: () => {
+                      setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                      /* Mock delete */ 
+                    }
+                  });
+                }}>
                   <Trash2 size={16} />
                 </button>
               </>
             ) : (
               <>
-                <button title="Unlock" onClick={handleToggleLock} className="text-green-600 hover:text-green-700 transition-colors">
-                  <Lock size={16} />
-                </button>
                 <button title="View" className="hover:text-(--color-primary) transition-colors" onClick={() => setViewRecordId(recordId)}>
                   <Eye size={16} />
                 </button>
@@ -155,6 +198,21 @@ export default function DataTable({
           onClose={() => setViewRecordId(null)}
         />
       )}
+
+      <Modal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        title={confirmModal.title}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>Cancel</Button>
+            <Button onClick={confirmModal.onConfirm} variant="primary">Confirm</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">{confirmModal.message}</p>
+      </Modal>
+
       <div className="w-full flex flex-col">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">

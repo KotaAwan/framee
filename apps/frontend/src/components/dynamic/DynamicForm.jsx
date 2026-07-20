@@ -10,12 +10,13 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm as useRHF } from 'react-hook-form';
 
-export default function DynamicForm({ doctype, recordId, readOnly = false, isModal = false }) {
+export default function DynamicForm({ doctype, recordId, readOnly = false, isModal = false, onLoadComplete }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [meta, setMeta] = useState(null);
   const [schema, setSchema] = useState([]);
+  const [data, setData] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
   const [isSingle, setIsSingle] = useState(false);
   const [workflow, setWorkflow] = useState(null);
@@ -88,6 +89,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
         const recordRes = await apiClient.get(`/api/v1/doc/${doctype}/${recordId}`);
         if (recordRes.data.success) {
           const rowData = { ...recordRes.data.data };
+          setData(rowData);
           fields.forEach(f => {
             if (f.fieldtype === 'Check' && rowData[f.fieldname] !== undefined) {
               rowData[f.fieldname] = Boolean(rowData[f.fieldname]);
@@ -110,8 +112,9 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       setErrorMsg(err.response?.data?.message || 'Failed to load form configuration or data.');
     } finally {
       setLoading(false);
+      if (onLoadComplete) onLoadComplete();
     }
-  }, [doctype, recordId, isNew, reset]);
+  }, [doctype, recordId, isNew, reset, onLoadComplete]);
 
   useEffect(() => {
     loadForm();
@@ -127,14 +130,41 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
     setErrorMsg('');
     setSuccessMsg('');
     try {
+      let savedRecordId;
       if (isNew) {
-        await apiClient.post(`/api/v1/doc/${doctype}`, data);
+        const res = await apiClient.post(`/api/v1/doc/${doctype}`, data);
+        savedRecordId = res.data?.data?.name || res.data?.data?.id;
       } else {
-        await apiClient.put(`/api/v1/doc/${doctype}/${recordId}`, data);
+        const res = await apiClient.put(`/api/v1/doc/${doctype}/${recordId}`, data);
+        savedRecordId = res.data?.data?.name || res.data?.data?.id || recordId;
       }
+
+      // Auto Submit Logic
+      if (savedRecordId) {
+        try {
+          const wfRes = await apiClient.get(`/api/v1/doc/${doctype}/${savedRecordId}/workflow`);
+          const transitions = wfRes.data?.data?.available_transitions || [];
+          const submitAction = transitions.find(t => 
+            t.action === 'Submit' || 
+            t.action_key === 'submit' || 
+            t.next_state === 'Submitted'
+          );
+          
+          if (submitAction) {
+            await apiClient.post(`/api/v1/doc/${doctype}/${savedRecordId}/workflow/transition`, {
+              action_key: submitAction.action_key || submitAction.action,
+              comment: 'Auto-submitted'
+            });
+          }
+        } catch (e) {
+          console.warn('Auto-submit workflow failed:', e);
+        }
+      }
+
       setSuccessMsg(`Data berhasil disimpan! Mengalihkan dalam 3 detik...`);
       setTimeout(() => {
-        router.push(`/doctype/${doctype}`);
+        const currentModule = router.query.module || 'doctype';
+        router.push(`/${currentModule}/${doctype}`);
       }, 3000);
     } catch (err) {
       console.error('Submit error:', err);
@@ -143,7 +173,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
     }
   };
 
-  const handleWorkflowTransition = async (actionKey, requireComment) => {
+  const handleWorkflowTransition = async (actionName, requireComment) => {
     let comment = '';
     if (requireComment) {
       comment = window.prompt("Please enter a comment for this action:");
@@ -152,7 +182,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
     setSaving(true);
     try {
       await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/workflow/transition`, {
-        action_key: actionKey,
+        action: actionName,
         comment
       });
       loadForm(); // reload everything
@@ -211,6 +241,15 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
     return grouped;
   }, [schema]);
 
+  // Derived state to determine if the form is actually editable
+  const currentStatus = watch('status') || data?.status || 'Draft';
+  const isEditable = useMemo(() => {
+    if (readOnly) return false;
+    if (['Locked', 'Cancelled', 'Archived', 'Approved', 'Rejected'].includes(currentStatus)) return false;
+    if (currentStatus === 'Submitted' && !meta?.allow_edit_after_submit) return false;
+    return true;
+  }, [readOnly, currentStatus, meta]);
+
   // Helper to map 1-12 column width to Tailwind grid classes
   const getColSpanClass = (width) => {
     const colWidth = width || 12; // Default to full width
@@ -259,13 +298,12 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       )}
 
       {/* Toolbar (No Card) */}
-      {!readOnly && (
-        <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
           <div className="flex items-center gap-2">
           {workflow?.available_transitions?.map(t => (
             <button 
-              key={t.action_key}
-              onClick={() => handleWorkflowTransition(t.action_key, t.require_comment)}
+              key={t.action}
+              onClick={() => handleWorkflowTransition(t.action, t.require_comment)}
               disabled={saving || loading}
               className="bg-purple-100 text-purple-700 hover:bg-purple-200 px-4 py-2 rounded-md text-sm font-medium transition-colors"
             >
@@ -283,16 +321,17 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
               </button>
             </>
           )}
-          <button 
-            onClick={handleSubmit(onSubmit)}
-            disabled={saving || loading}
-            className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
+          {isEditable && (
+            <button 
+              onClick={handleSubmit(onSubmit)}
+              disabled={saving || loading}
+              className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          )}
         </div>
       </div>
-      )}
 
       {errorMsg && (
         <div className="p-3 bg-red-50 text-red-600 border border-red-200 rounded">
@@ -344,7 +383,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                             register={register} 
                             control={control}
                             error={errors[field.fieldname]} 
-                            readOnly={readOnly}
+                            readOnly={!isEditable}
                           />
                         </div>
                         );
@@ -359,7 +398,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       </div>
 
       {/* Reset Password Card for sys_user Edit */}
-      {doctype === 'sys_user' && !isNew && !isModal && !readOnly && (
+      {doctype === 'sys_user' && !isNew && !isModal && isEditable && (
         <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden mt-6">
            <div className="px-5 py-4 border-b border-(--color-border) bg-(--color-section-header-bg)">
              <h3 className="font-semibold text-(--color-text) text-base">Security</h3>

@@ -35,11 +35,11 @@ class SchemaEngine {
   }
 
   async _handleDocFieldChange(payload, context) {
-    if (!payload || !payload.doctype_id) return;
+    if (!payload || !payload.doctype) return;
     try {
       // Find the doctype name
       const doctype = await this.dbEngine.query('sys_doctype', context.tenant_id)
-        .where({ id: payload.doctype_id })
+        .where({ table_name: payload.doctype })
         .first();
       
       if (doctype) {
@@ -51,7 +51,7 @@ class SchemaEngine {
         await this.syncTable(doctype.name, context.tenant_id);
       }
     } catch (err) {
-      logger.error(`Error in SchemaEngine on DocField change for doctype_id ${payload.doctype_id}:`, err);
+      logger.error(`Error in SchemaEngine on DocField change for doctype ${payload.doctype}:`, err);
     }
   }
 
@@ -121,7 +121,7 @@ class SchemaEngine {
     
     try {
       const meta = await this.metaEngine.getDocType(doctypeName, tenantId);
-      const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+      const tableName = meta.table_name;
       
       const knex = this.dbEngine.getRawConnection();
       
@@ -160,6 +160,7 @@ class SchemaEngine {
       table.datetime('updated_at').defaultTo(knex.fn.now());
       
       if (meta.has_lifecycle) {
+        table.string('workflow_state', 100).nullable();
         table.uuid('submitted_by').nullable();
         table.datetime('submitted_at').nullable();
         table.uuid('cancelled_by').nullable();
@@ -200,6 +201,10 @@ class SchemaEngine {
       if (!existingCols.includes('parent_doctype')) table.string('parent_doctype', 100).nullable();
       if (!existingCols.includes('parent_field')) table.string('parent_field', 100).nullable();
       if (!existingCols.includes('idx')) table.integer('idx').defaultTo(0);
+
+      if (meta.has_lifecycle) {
+        if (!existingCols.includes('workflow_state')) table.string('workflow_state', 100).nullable();
+      }
 
       for (const field of meta.fields) {
         if (uiOnlyTypes.includes(field.fieldtype)) continue;

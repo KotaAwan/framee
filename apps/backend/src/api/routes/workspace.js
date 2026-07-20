@@ -16,66 +16,81 @@ const router = express.Router();
 router.get('/', tenantAuth, async (req, res, next) => {
   try {
     const tenant_id = req.tenantId;
+    const user_id = req.userId;
     const dbEngine = Container.resolve('DatabaseEngine');
     
-    // We need to fetch from both the System Tenant (global modules) and the specific user's Tenant
-    const SYSTEM_TENANT = config.app.systemTenantId;
+    // We fetch globally (tenantless setup or system tenant for now)
+    const knex = dbEngine.getRawConnection();
+
+    // 1. Get user roles
+    const userRoles = await knex('sys_user_role')
+      .where({ user_id: user_id, is_deleted: false, status: 'Active' })
+      .select('role_id');
+    const roleIds = userRoles.map(r => r.role_id);
+
+    if (roleIds.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // 2. Get workspaces (menu assignments) for these roles
+    const workspaces = await knex('sys_workspace')
+      .whereIn('role_id', roleIds)
+      .where({ is_deleted: false, status: 'Active' })
+      .orderBy('sort_order', 'asc');
     
-    // 1. Fetch Modules
-    const systemModules = await dbEngine.query('sys_module', SYSTEM_TENANT)
-      .where({ status: 'Active' });
+    const menuIds = [...new Set(workspaces.map(w => w.menu_id))];
+
+    if (menuIds.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // 3. Get menus
+    const menus = await knex('sys_menu')
+      .whereIn('id', menuIds)
+      .where({ is_deleted: false, status: 'Active' });
       
-    let userModules = [];
-    if (tenant_id !== SYSTEM_TENANT) {
-      userModules = await dbEngine.query('sys_module', tenant_id)
-        .where({ status: 'Active' });
-    }
-    
-    const modules = [...systemModules, ...userModules].sort((a, b) => a.name.localeCompare(b.name));
+    const doctypesNeeded = [...new Set(menus.map(m => m.doctype))];
 
-    // 2. Fetch Shortcuts
-    const moduleIds = modules.map(m => m.id);
-    
-    let shortcuts = [];
-    if (moduleIds.length > 0) {
-      const systemShortcuts = await dbEngine.query('sys_workspace_shortcut', SYSTEM_TENANT)
-        .whereIn('module_id', moduleIds)
-        .where({ status: 'Active' });
-        
-      let userShortcuts = [];
-      if (tenant_id !== SYSTEM_TENANT) {
-        userShortcuts = await dbEngine.query('sys_workspace_shortcut', tenant_id)
-          .whereIn('module_id', moduleIds)
-          .where({ status: 'Active' });
-      }
+    // 4. Get doctypes
+    const doctypes = await knex('sys_doctype')
+      .whereIn('table_name', doctypesNeeded)
+      .where({ is_deleted: false, status: 'Active' });
       
-      shortcuts = [...systemShortcuts, ...userShortcuts].sort((a, b) => a.sort_order - b.sort_order);
-    }
+    const doctypeMap = new Map();
+    doctypes.forEach(dt => doctypeMap.set(dt.table_name, dt));
 
-    // 2.5 Fetch DocTypes to inject their icons into shortcuts
-    const systemDocTypes = await dbEngine.query('sys_doctype', SYSTEM_TENANT).select('name', 'icon');
-    let userDocTypes = [];
-    if (tenant_id !== SYSTEM_TENANT) {
-      userDocTypes = await dbEngine.query('sys_doctype', tenant_id).select('name', 'icon');
-    }
-    const allDocTypes = [...systemDocTypes, ...userDocTypes];
-    const doctypeIconMap = {};
-    allDocTypes.forEach(dt => {
-      if (dt.icon) doctypeIconMap[dt.name] = dt.icon;
-    });
+    const moduleIdsNeeded = [...new Set(doctypes.map(dt => dt.module_id))];
 
-    // 3. Group shortcuts by module and inject icon
-    const result = modules.map(m => {
+    // 5. Get modules
+    const modules = await knex('sys_module')
+      .whereIn('id', moduleIdsNeeded)
+      .where({ is_deleted: false, status: 'Active' })
+      .orderBy('name', 'asc');
+
+    // 6. Assemble
+    // First, map each menu to its doctype and module
+    const enrichedMenus = menus.map(menu => {
+      const dt = doctypeMap.get(menu.doctype);
+      if (!dt) return null;
+      // Get the sort_order from the first matching workspace record
+      const ws = workspaces.find(w => w.menu_id === menu.id);
       return {
-        ...m,
-        shortcuts: shortcuts
-          .filter(s => s.module_id === m.id)
-          .map(s => {
-            if (s.type === 'DocType' && doctypeIconMap[s.target]) {
-              s.icon = doctypeIconMap[s.target];
-            }
-            return s;
-          })
+        id: menu.id,
+        name: menu.name,
+        doctype: dt.slug, // The target URL slug for the doctype
+        icon: dt.icon,
+        module_id: dt.module_id,
+        sort_order: ws ? ws.sort_order : 999
+      };
+    }).filter(Boolean).sort((a, b) => a.sort_order - b.sort_order);
+
+    const result = modules.map(mod => {
+      return {
+        id: mod.id,
+        name: mod.name,
+        slug: mod.slug, // The target URL slug for the module
+        icon: mod.icon,
+        shortcuts: enrichedMenus.filter(m => m.module_id === mod.id)
       };
     });
 

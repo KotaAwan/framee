@@ -30,8 +30,7 @@ router.get('/', tenantAuth, requireAdmin, async (req, res, next) => {
     
     let query = knex('sys_audit_log')
       .leftJoin('sys_user', 'sys_audit_log.user_id', 'sys_user.id')
-      .select('sys_audit_log.*', 'sys_user.full_name as user_name', 'sys_user.avatar_url as avatar_url')
-      .where({ 'sys_audit_log.tenant_id': req.tenantId })
+      .select('sys_audit_log.*', 'sys_user.name as user_name', 'sys_user.avatar_url as avatar_url')
       .orderBy('sys_audit_log.created_at', 'desc');
     
     if (doctype) query = query.where({ 'sys_audit_log.doctype': doctype });
@@ -62,8 +61,8 @@ router.get('/doc/:doctype/:id', tenantAuth, requireAdmin, async (req, res, next)
     
     const logs = await knex('sys_audit_log')
       .leftJoin('sys_user', 'sys_audit_log.user_id', 'sys_user.id')
-      .select('sys_audit_log.*', 'sys_user.full_name as user_name', 'sys_user.avatar_url as avatar_url')
-      .where({ 'sys_audit_log.tenant_id': req.tenantId, 'sys_audit_log.doctype': doctype, 'sys_audit_log.doc_id': id })
+      .select('sys_audit_log.*', 'sys_user.name as user_name', 'sys_user.avatar_url as avatar_url')
+      .where({ 'sys_audit_log.doctype': doctype, 'sys_audit_log.doc_id': id })
       .orderBy('sys_audit_log.created_at', 'desc');
     
     res.json({
@@ -88,8 +87,8 @@ router.get('/user/:user_id', tenantAuth, requireAdmin, async (req, res, next) =>
     
     const logs = await knex('sys_audit_log')
       .leftJoin('sys_user', 'sys_audit_log.user_id', 'sys_user.id')
-      .select('sys_audit_log.*', 'sys_user.full_name as user_name', 'sys_user.avatar_url as avatar_url')
-      .where({ 'sys_audit_log.tenant_id': req.tenantId, 'sys_audit_log.user_id': user_id })
+      .select('sys_audit_log.*', 'sys_user.name as user_name', 'sys_user.avatar_url as avatar_url')
+      .where({ 'sys_audit_log.user_id': user_id })
       .orderBy('sys_audit_log.created_at', 'desc');
     
     res.json({

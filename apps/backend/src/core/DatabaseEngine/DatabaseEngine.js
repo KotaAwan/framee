@@ -64,11 +64,12 @@ class DatabaseEngine {
     if (!this.db) {
       throw new DatabaseError('DatabaseEngine is not initialized.');
     }
-    if (!tenantId) {
-      throw new DatabaseError(`Tenant ID is required for querying table ${table}`);
-    }
+    // tenantId is deprecated in schema but kept in signature for compatibility if needed elsewhere
+    // if (!tenantId) {
+    //   throw new DatabaseError(`Tenant ID is required for querying table ${table}`);
+    // }
 
-    let qb = this.db(table).where('tenant_id', tenantId);
+    let qb = this.db(table);
 
     // Apply transaction if provided
     if (options.trx) {

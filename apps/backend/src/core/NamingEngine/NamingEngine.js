@@ -14,17 +14,17 @@ class NamingEngine {
   }
 
   /**
-   * Generates a unique ID based on the DocType's autoname rule.
+   * Generates a unique CODE based on the DocType's auto_code rule.
    * 
    * Supported formats:
    * - 'UUID' or null: standard UUID
    * - 'field:[fieldname]': value of the specified field
    * - 'naming_series:[prefix]': e.g., 'naming_series:INV-.YYYY.-.####'
    */
-  async generateId(meta, record, tenantId) {
-    const autoname = meta.autoname || 'UUID';
+  async generateCode(meta, record, tableName) {
+    const autoname = meta.auto_code || 'UUID';
 
-    // 1. UUID
+    // 1. UUID fallback
     if (autoname.toUpperCase() === 'UUID') {
       return uuidv4();
     }
@@ -36,14 +36,13 @@ class NamingEngine {
       if (!value) {
         throw new ValidationError(`Field '${fieldname}' is required for naming ${meta.name}.`);
       }
-      // sanitize value to be a safe ID
       return String(value).trim();
     }
 
-    // 3. Naming Series
-    if (autoname.startsWith('naming_series:')) {
-      const pattern = autoname.split(':')[1];
-      return await this._generateFromSeries(pattern, tenantId);
+    // 3. Naming Series (e.g. MOD-.####)
+    if (autoname.startsWith('naming_series:') || autoname.includes('.#')) {
+      const pattern = autoname.startsWith('naming_series:') ? autoname.split(':')[1] : autoname;
+      return await this._generateFromSeries(pattern, tableName);
     }
 
     // Fallback
@@ -51,13 +50,11 @@ class NamingEngine {
   }
 
   /**
-   * Evaluates the series pattern and increments the sequence securely.
+   * Evaluates the series pattern and increments the sequence securely by querying the max code.
    */
-  async _generateFromSeries(pattern, tenantId) {
+  async _generateFromSeries(pattern, tableName) {
     const knex = this.dbEngine.getRawConnection();
 
-    // Parse the pattern to extract prefix and digits count
-    // Example: 'INV-.YYYY.-.####' -> prefix = 'INV-2024-', digits = 4
     let parsedPrefix = '';
     let digitsCount = 4; // default
 
@@ -73,33 +70,29 @@ class NamingEngine {
         parsedPrefix += String(new Date().getDate()).padStart(2, '0');
       } else if (part.startsWith('#')) {
         digitsCount = part.length;
+      } else if (part.startsWith('X')) {
+        digitsCount = part.length;
       } else {
         parsedPrefix += part;
       }
     }
 
-    // Execute atomic increment in a transaction
     let nextValue = 1;
     
+    // We lock the table to prevent race conditions during insert
     await knex.transaction(async (trx) => {
-      // Try to lock the row
-      const existing = await trx('sys_series')
-        .where({ tenant_id: tenantId, prefix: parsedPrefix })
+      const lastRecord = await trx(tableName)
+        .where('code', 'like', `${parsedPrefix}%`)
+        .orderBy('code', 'desc')
         .forUpdate()
         .first();
 
-      if (existing) {
-        nextValue = existing.current + 1;
-        await trx('sys_series')
-          .where({ tenant_id: tenantId, prefix: parsedPrefix })
-          .update({ current: nextValue, updated_at: new Date() });
-      } else {
-        await trx('sys_series').insert({
-          tenant_id: tenantId,
-          prefix: parsedPrefix,
-          current: 1,
-          updated_at: new Date()
-        });
+      if (lastRecord && lastRecord.code) {
+        const lastSequenceStr = lastRecord.code.replace(parsedPrefix, '');
+        const lastSeq = parseInt(lastSequenceStr, 10);
+        if (!isNaN(lastSeq)) {
+          nextValue = lastSeq + 1;
+        }
       }
     });
 

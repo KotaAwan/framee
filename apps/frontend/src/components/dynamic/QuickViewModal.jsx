@@ -47,43 +47,51 @@ export default function QuickViewModal({ doctype, recordId, onClose }) {
   };
 
   const [meta, setMeta] = useState(null);
+  const [appLoading, setAppLoading] = useState(true);
 
   React.useEffect(() => {
     if (!doctype) return;
-    apiClient.get(`/api/v1/meta/doctype/${doctype}`)
-      .then(res => {
-        if (res.data.success) {
-          setMeta(res.data.data);
-        }
-      })
-      .catch(err => console.error(err));
+    setAppLoading(true);
+    
+    const fetchMeta = apiClient.get(`/api/v1/meta/doctype/${doctype}`);
+    const fetchAudit = recordId 
+      ? apiClient.get(`/api/v1/audit/doc/${doctype}/${recordId}?limit=100`)
+      : Promise.resolve(null);
       
-    if (recordId) {
-      apiClient.get(`/api/v1/audit/doc/${doctype}/${recordId}?limit=100`)
-        .then(res => {
-          if (res.data.success) {
-             const records = Array.isArray(res.data.data) ? res.data.data : (res.data.data.records || []);
-             const likes = records.filter(r => r.action === 'LIKE').length;
-             const unlikes = records.filter(r => r.action === 'UNLIKE').length;
-             setLikeCount(Math.max(0, likes - unlikes));
-             
-             // Check if current user liked
-             const myLastAction = records.find(r => r.user_id === currentUser?.id && (r.action === 'LIKE' || r.action === 'UNLIKE'));
-             setIsLiked(myLastAction?.action === 'LIKE');
-             
-             const comments = records.filter(r => r.action === 'COMMENT').length;
-             setCommentCount(comments);
-          }
-        })
-        .catch(err => console.error(err));
-    }
-  }, [doctype, recordId, refreshTimeline]);
+    Promise.all([fetchMeta, fetchAudit])
+      .then(([resMeta, resAudit]) => {
+         if (resMeta?.data?.success) {
+           setMeta(resMeta.data.data);
+         }
+         if (resAudit?.data?.success) {
+           const records = Array.isArray(resAudit.data.data) ? resAudit.data.data : (resAudit.data.data.records || []);
+           const likes = records.filter(r => r.action === 'LIKE').length;
+           const unlikes = records.filter(r => r.action === 'UNLIKE').length;
+           setLikeCount(Math.max(0, likes - unlikes));
+           
+           const myLastAction = records.find(r => r.user_id === currentUser?.id && (r.action === 'LIKE' || r.action === 'UNLIKE'));
+           setIsLiked(myLastAction?.action === 'LIKE');
+           
+           const comments = records.filter(r => r.action === 'COMMENT').length;
+           setCommentCount(comments);
+         }
+      })
+      .catch(err => console.error(err))
+      .finally(() => setAppLoading(false));
+  }, [doctype, recordId, refreshTimeline, currentUser?.id]);
 
   const headerIcon = meta?.icon || 'Database';
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 sm:p-6 bg-black/50 backdrop-blur-sm pt-10 sm:pt-16">
-      <div className="bg-(--color-surface) rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden border border-(--color-border)">
+      <div className="bg-(--color-surface) rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden border border-(--color-border) relative">
+
+        {appLoading && (
+          <div className="absolute inset-0 z-50 bg-(--color-surface) flex flex-col items-center justify-center bg-opacity-90 backdrop-blur-sm transition-opacity duration-300">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-(--color-primary) mb-3"></div>
+            <p className="text-(--color-muted) text-sm font-medium animate-pulse">Loading view...</p>
+          </div>
+        )}
 
         {/* Modal Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-5 border-b border-(--color-border) bg-transparent">
@@ -110,7 +118,7 @@ export default function QuickViewModal({ doctype, recordId, onClose }) {
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto bg-(--color-surface) p-6 flex flex-col gap-4">
+        <div className={`flex-1 overflow-y-auto bg-(--color-surface) p-6 flex flex-col gap-4 transition-opacity duration-500 ease-in-out ${appLoading ? 'opacity-0' : 'opacity-100'}`}>
 
           {/* Read-Only Form — pointer-events-none prevents editing */}
           <div className="pointer-events-none">
@@ -119,6 +127,7 @@ export default function QuickViewModal({ doctype, recordId, onClose }) {
               recordId={recordId}
               readOnly={true}
               isModal={true}
+              onLoadComplete={() => setAppLoading(false)}
             />
           </div>
 

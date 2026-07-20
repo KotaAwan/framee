@@ -8,19 +8,18 @@ export default function VersionHistoryModal({ doctype, recordId, onClose }) {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    async function fetchVersions() {
+      try {
+        const res = await apiClient.get(`/api/v1/doc/${doctype}/${recordId}/versions`);
+        setVersions(res.data?.data || []);
+      } catch (err) {
+        setErrorMsg('Failed to load version history.');
+      } finally {
+        setLoading(false);
+      }
+    }
     fetchVersions();
   }, [doctype, recordId]);
-
-  async function fetchVersions() {
-    try {
-      const res = await apiClient.get(`/api/v1/doc/${doctype}/${recordId}/versions`);
-      setVersions(res.data?.data || []);
-    } catch (err) {
-      setErrorMsg('Failed to load version history.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleRestore = async (versionNumber) => {
     if (!window.confirm(`Are you sure you want to restore to version ${versionNumber}?`)) return;

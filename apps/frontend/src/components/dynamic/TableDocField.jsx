@@ -16,8 +16,8 @@ export default function TableDocField({ fieldname, label, options, control, regi
     if (options) {
       apiClient.get(`/api/v1/meta/doctype/${options}`).then(res => {
         const metaFields = res.data?.data?.fields || [];
-        // Only show fields that are in_list_view, or just take first 5 non-system fields
-        const listCols = metaFields.filter(f => f.in_list_view && !f.is_hidden);
+        // Only show fields that are in_list, or just take first 5 non-system fields
+        const listCols = metaFields.filter(f => f.in_list && !f.is_hidden);
         setColumns(listCols.length > 0 ? listCols : metaFields.filter(f => !f.is_hidden).slice(0, 5));
       }).catch(console.error);
     }

@@ -6,198 +6,82 @@ Precisely defines all standard columns that must exist in every Framee table —
 
 ---
 
-## A. Standard Columns — `dt_*` Data Tables
+## A. Standard Columns — `sys_*` System Tables
 
-All of these columns are automatically injected by the Database Engine when a DocType is activated.
-**No DocField may have a `fieldname` that matches any of these standard columns.**
+These columns are standardized for main system tables.
+No audit trail timestamps (`created_at`, `updated_at`, etc.) exist in the main tables. They are tracked entirely via `_logs` and `_version` tables.
 
 ```sql
 -- ─────────────────────────────────────────────────────────
 -- IDENTITY
 -- ─────────────────────────────────────────────────────────
-id              VARCHAR(36)    NOT NULL,                  -- UUID v4, PK
-tenant_id       VARCHAR(36)    NOT NULL,                  -- Row-level tenant isolation
-name            VARCHAR(255)   NOT NULL DEFAULT '',       -- Human-readable record ID (series)
+id              INT UNSIGNED   NOT NULL AUTO_INCREMENT,   -- PK
+code            VARCHAR(50)    NULL UNIQUE,               -- Series Format, User visible
+name            VARCHAR(150)   NOT NULL,                  -- Human-readable record name/title
 
 -- ─────────────────────────────────────────────────────────
--- LIFECYCLE STATUS  (replaces is_deleted, is_locked, docstatus)
+-- LIFECYCLE STATUS
 -- ─────────────────────────────────────────────────────────
-status          VARCHAR(20)    NOT NULL DEFAULT 'Draft',
-
--- ─────────────────────────────────────────────────────────
--- AUDIT TRAIL
--- ─────────────────────────────────────────────────────────
-created_by      VARCHAR(36)    NULL,                      -- FK → sys_user.id (NULL = system)
-updated_by      VARCHAR(36)    NULL,                      -- FK → sys_user.id
-created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-updated_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
--- ─────────────────────────────────────────────────────────
--- SOFT DELETE  (status='Deleted' + these columns)
--- ─────────────────────────────────────────────────────────
-deleted_at      DATETIME       NULL DEFAULT NULL,
-deleted_by      VARCHAR(36)    NULL DEFAULT NULL,         -- FK → sys_user.id
-delete_reason   TEXT           NULL DEFAULT NULL,
-
--- ─────────────────────────────────────────────────────────
--- SUBMIT / CANCEL  (for is_submittable DocTypes)
--- ─────────────────────────────────────────────────────────
-submitted_at    DATETIME       NULL DEFAULT NULL,
-submitted_by    VARCHAR(36)    NULL DEFAULT NULL,         -- FK → sys_user.id
-cancelled_at    DATETIME       NULL DEFAULT NULL,
-cancelled_by    VARCHAR(36)    NULL DEFAULT NULL,
-cancel_reason   TEXT           NULL DEFAULT NULL,
-
--- ─────────────────────────────────────────────────────────
--- AMENDMENT  (for amend flow)
--- ─────────────────────────────────────────────────────────
-amended_from    VARCHAR(36)    NULL DEFAULT NULL,         -- FK → self (original doc id)
-
--- ─────────────────────────────────────────────────────────
--- VERSION
--- ─────────────────────────────────────────────────────────
-version         INT UNSIGNED   NOT NULL DEFAULT 1,        -- increments on every save
+status          VARCHAR(100)   NULL,                      -- References sys_workflow_state.name
+is_deleted      BOOLEAN        NOT NULL DEFAULT 0,        -- 0: No, 1: Yes (Soft Delete)
 
 -- ─────────────────────────────────────────────────────────
 -- CONSTRAINTS
 -- ─────────────────────────────────────────────────────────
-PRIMARY KEY (id),
-INDEX idx_{table}_tenant_status (tenant_id, status),
-INDEX idx_{table}_tenant_created (tenant_id, created_at),
-INDEX idx_{table}_name (tenant_id, name)
+PRIMARY KEY (id)
 ```
 
 ---
 
-## B. Standard Columns — `sys_*` System Tables
+## B. Standard Columns — `<table_name>_logs` Local Log Tables
 
-System tables have a simpler set (no lifecycle metadata beyond status):
-
-```sql
-id          VARCHAR(36)   NOT NULL,
-tenant_id   VARCHAR(36)   NOT NULL,
-status      VARCHAR(20)   NOT NULL DEFAULT 'Active',
-created_by  VARCHAR(36)   NULL,
-updated_by  VARCHAR(36)   NULL,
-created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-updated_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-PRIMARY KEY (id),
-INDEX idx_{table}_tenant (tenant_id, status)
-```
-
----
-
-## C. Standard Columns — `dt_*_logs` Local Log Tables
+Every table (except some core meta tables) has an auto-generated `_logs` table tracking creation, updates, deletes, and social events (comments, likes).
 
 ```sql
-id              VARCHAR(36)    NOT NULL,
-tenant_id       VARCHAR(36)    NOT NULL,
-doctype         VARCHAR(100)   NOT NULL,
-doc_id          VARCHAR(36)    NOT NULL,                  -- FK → dt_{doctype}.id
-doc_name        VARCHAR(255)   NULL,                      -- snapshot of record name
-action          VARCHAR(30)    NOT NULL,
-user_id         VARCHAR(36)    NULL,
-user_name       VARCHAR(200)   NULL,
-user_avatar     VARCHAR(255)   NULL,
-comment         TEXT           NULL,                      -- for COMMENT actions
-diff            JSON           NULL,                      -- brief change summary
-change_summary  TEXT           NULL,
+id              INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+doc_id          INT UNSIGNED   NOT NULL,                  -- FK → main_table.id
+status          VARCHAR(100)   NULL,                      -- E.g. "Created", "Updated", "Deleted", "Liked", "Commented" or Workflow Action name
+content         TEXT           NULL,                      -- Stores the document's `name` or the exact `comment` content
+created_by      INT UNSIGNED   NULL,                      -- FK → sys_user.id
 created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-PRIMARY KEY (id),
-INDEX idx_logs_doc     (tenant_id, doc_id, created_at),
-INDEX idx_logs_doctype (tenant_id, doctype, created_at),
-INDEX idx_logs_user    (tenant_id, user_id, created_at)
+PRIMARY KEY (id)
 ```
 
 ---
 
-## D. Standard Columns — `dt_*_likes` Tables
+## C. Standard Columns — `<table_name>_version` Local Version Tables
+
+Every table (except some core meta tables) has an auto-generated `_version` table tracking historical data snapshots BEFORE an update.
 
 ```sql
-id          VARCHAR(36)   NOT NULL,
-tenant_id   VARCHAR(36)   NOT NULL,
-doc_id      VARCHAR(36)   NOT NULL,
-user_id     VARCHAR(36)   NOT NULL,
-created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+id              INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+doc_id          INT UNSIGNED   NOT NULL,                  -- (old_id) FK → main_table.id
+-- [... Exact copy of all fields from main table here ...]
+backup_by       INT UNSIGNED   NULL,                      -- FK → sys_user.id
+backup_at       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-PRIMARY KEY (id),
-UNIQUE KEY uniq_like (tenant_id, doc_id, user_id)
+PRIMARY KEY (id)
 ```
 
 ---
 
-## E. Column Reference Card
+## D. Column Reference Card
 
 | Column | Present In | Type | Rule |
 |--------|-----------|------|------|
-| `id` | ALL | VARCHAR(36) | UUID v4, PK, NEVER auto-increment |
-| `tenant_id` | ALL | VARCHAR(36) | NOT NULL, no default |
-| `name` | dt_* | VARCHAR(255) | Human ID (series), not nullable |
-| `status` | ALL | VARCHAR(20) | Lifecycle state, NOT NULL |
-| `created_by` | ALL | VARCHAR(36) | NULL = system action |
-| `updated_by` | ALL | VARCHAR(36) | NULL = system action |
-| `created_at` | ALL | DATETIME | DEFAULT CURRENT_TIMESTAMP |
-| `updated_at` | ALL | DATETIME | ON UPDATE CURRENT_TIMESTAMP |
-| `deleted_at` | dt_* | DATETIME | NULL = not deleted |
-| `deleted_by` | dt_* | VARCHAR(36) | NULL = not deleted |
-| `delete_reason` | dt_* | TEXT | NULL = not deleted |
-| `submitted_at` | dt_* | DATETIME | NULL = not submitted |
-| `submitted_by` | dt_* | VARCHAR(36) | NULL = not submitted |
-| `cancelled_at` | dt_* | DATETIME | NULL = not cancelled |
-| `cancelled_by` | dt_* | VARCHAR(36) | NULL = not cancelled |
-| `cancel_reason` | dt_* | TEXT | NULL = not cancelled |
-| `amended_from` | dt_* | VARCHAR(36) | NULL = original doc |
-| `version` | dt_* | INT UNSIGNED | DEFAULT 1, increments on save |
+| `id` | ALL Main Tables | INT UNSIGNED AUTO_INCREMENT | PK |
+| `code` | Most Main Tables | VARCHAR(50) UNIQUE | Auto-generated Series Format ID (e.g. USER-2607-0001) |
+| `name` | Most Main Tables | VARCHAR(150) | Human-readable Name/Title |
+| `status` | ALL Main Tables | VARCHAR(100) | Lifecycle state, referencing `sys_workflow_state.name` |
+| `is_deleted` | ALL Main Tables | BOOLEAN | 0 = Active, 1 = Soft Deleted |
 
 ---
 
-## F. Lifecycle Status Values
+## E. Rules
 
-### For `dt_*` tables (with `is_submittable = true`):
-
-| Status | Meaning | Editable? | Next Possible Status |
-|--------|---------|-----------|----------------------|
-| `Draft` | Created, not yet submitted | ✅ Yes | Submitted, Deleted |
-| `Submitted` | Submitted for approval / posting | ❌ No (amend only) | Locked, Cancelled |
-| `Locked` | Fully locked (e.g., Posted Journal) | ❌ No (reversal only) | Cancelled |
-| `Cancelled` | Cancelled with reason | ❌ No | Deleted |
-| `Archived` | Archived, read-only | ❌ No | Deleted |
-| `Deleted` | Soft-deleted | ❌ No | (restore to Draft) |
-
-### For `dt_*` tables (with `is_submittable = false`, e.g., Customer):
-
-| Status | Meaning |
-|--------|---------|
-| `Draft` | Just created, being edited |
-| `Active` | Fully active record |
-| `Archived` | Archived, read-only |
-| `Deleted` | Soft-deleted |
-
-### For `sys_*` tables:
-
-| Status | Meaning |
-|--------|---------|
-| `Active` | Visible and functional |
-| `Archived` | Deactivated, not visible |
-
----
-
-## G. Rules
-
-1. **`id` is always UUID v4** — generated in application, not in MySQL. `AUTO_INCREMENT` is forbidden.
-2. **`tenant_id` is always NOT NULL** — every row belongs to a tenant. No global rows.
-3. **`status` is the single source of truth** — no `is_deleted`, `is_locked`, `docstatus` columns ever.
-4. **`created_at` and `updated_at` are auto-managed** — application code never sets them manually.
-5. **`version` increments on every successful UPDATE** — enforced by CRUD Engine, not MySQL trigger.
-6. **`amended_from` is NULL on original documents** — only set on amendment clones.
-7. **System tables (`sys_*`) do not have lifecycle columns** — no `deleted_at`, `submitted_at`, etc.
-
----
-
-## Notes
-
-- These columns form the **column contract** that all engines depend on. Changing any column name, type, or constraint requires a framework-level migration and a major version bump.
-- The `version` column is used by the Version Engine to detect concurrent edit conflicts (optimistic locking).
-- `deleted_at` being NULL is the check for "not deleted" — not a `status != 'Deleted'` check alone. Both must be consistent.
+1. **`id` is always INT UNSIGNED AUTO_INCREMENT** — MySQL manages the primary key. UUIDs are completely removed from the new structure for efficiency.
+2. **`code` is the user-facing identifier** — When presenting relations in the UI, `code` - `name` is shown.
+3. **`status` and `is_deleted` are the only lifecycle columns** — No `deleted_at`, `submitted_at`, `created_at` in the main tables.
+4. **All History is delegated to Local Tables** — Instead of a monolithic global audit table, each table relies on its specific `_logs` table (for event history) and `_version` table (for data snapshots).
+5. **String-based References** — Key relational meta-references like `doctype` and workflow states/actions now use `VARCHAR(100)` storing strings (table_names and action names) rather than integer IDs, simplifying querying and readability.

@@ -51,7 +51,7 @@ class CRUDEngine {
 
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
     
-    const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+    const tableName = meta.table_name;
 
     if (meta.is_single) {
       // Ensure only 1 record exists
@@ -79,48 +79,66 @@ class CRUDEngine {
 
     this._validate(parentData, meta, false);
 
-    const id = await this.namingEngine.generateId(meta, parentData, tenantId);
+    let code = await this.namingEngine.generateCode(meta, parentData, tableName);
 
     const record = {
       ...parentData,
-      id,
-      tenant_id: tenantId,
-      created_by: userId,
-      updated_by: userId,
-      created_at: new Date(),
-      updated_at: new Date(),
+      code,
       status: meta.initial_status || 'Draft',
     };
+
+    let insertedId;
 
     const trx = await this.dbEngine.getRawConnection().transaction();
     try {
       await this.workflowEngine.setInitialState(doctype, record, tenantId);
       
-      await trx(tableName).insert(record);
+      const [id] = await trx(tableName).insert(record);
+      insertedId = id;
+      record.id = insertedId; // For child records reference
+
+      // Insert into _logs
+      if (tableName !== 'sys_docfield') {
+        await trx(`${tableName}_logs`).insert({
+          doc_id: insertedId,
+          status: 'Created',
+          content: record.name || null,
+          created_by: userId,
+          created_at: new Date()
+        });
+      }
 
       for (const child of childrenData) {
         if (!child.options) throw new ValidationError(`Field ${child.fieldname} is missing 'options' (Child DocType).`);
         const childMeta = await this.metaEngine.getDocType(child.options, tenantId);
-        const childTableName = childMeta.name.startsWith('sys_') ? childMeta.name : `dt_${childMeta.name.toLowerCase()}`;
+        const childTableName = childMeta.table_name;
         
         let idx = 0;
         for (const row of child.records) {
-          const childId = uuidv4();
           const childRecord = {
             ...row,
-            id: childId,
-            tenant_id: tenantId,
-            parent_id: id,
+            parent_id: insertedId,
             parent_doctype: doctype,
             parent_field: child.fieldname,
             idx: idx++,
-            created_by: userId,
-            updated_by: userId,
-            created_at: new Date(),
-            updated_at: new Date(),
             status: childMeta.initial_status || 'Active',
           };
-          await trx(childTableName).insert(childRecord);
+          
+          if (childMeta.auto_code) {
+             childRecord.code = await this.namingEngine.generateCode(childMeta, childRecord, childTableName);
+          }
+
+          const [childId] = await trx(childTableName).insert(childRecord);
+          
+          if (childTableName !== 'sys_docfield') {
+            await trx(`${childTableName}_logs`).insert({
+              doc_id: childId,
+              status: 'Created',
+              content: childRecord.name || null,
+              created_by: userId,
+              created_at: new Date()
+            });
+          }
         }
       }
 
@@ -129,8 +147,8 @@ class CRUDEngine {
       await trx.rollback();
       throw err;
     }
-    
-    const newRecord = await this.get(doctype, id, tenantId, userId);
+
+    const newRecord = await this.get(doctype, insertedId, tenantId, userId);
     
     // Emit after_insert event
     await this.eventEngine.emit(`${doctype}.after_insert`, { doc: newRecord }, { 
@@ -150,7 +168,7 @@ class CRUDEngine {
     await this.lifecycleEngine.canPerform('read', doctype, tenantId, userId);
 
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
-    const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+    const tableName = meta.table_name;
 
     let record;
     if (meta.is_single) {
@@ -175,7 +193,7 @@ class CRUDEngine {
       if (!field.options) continue;
       try {
         const childMeta = await this.metaEngine.getDocType(field.options, tenantId);
-        const childTableName = childMeta.name.startsWith('sys_') ? childMeta.name : `dt_${childMeta.name.toLowerCase()}`;
+        const childTableName = childMeta.table_name;
         
         const childRecords = await this.dbEngine.query(childTableName, tenantId)
           .where({ parent_id: record.id, parent_field: field.fieldname, status: 'Active' })
@@ -185,6 +203,22 @@ class CRUDEngine {
       } catch (err) {
         logger.warn(`Failed to fetch child records for ${doctype}.${field.fieldname}: ${err.message}`);
         record[field.fieldname] = [];
+      }
+    }
+    // Resolve sys_state for status field
+    if (record.status) {
+      try {
+        const state = await this.dbEngine.query('sys_workflow_state', tenantId)
+          .where({ id: record.status })
+          .first();
+        if (state) {
+          record.status_id = record.status;
+          record.status = state.name;
+          record.status_style = state.style;
+          record.is_terminal_state = state.is_terminal;
+        }
+      } catch (e) {
+        logger.warn(`Failed to resolve sys_state for record: ${e.message}`);
       }
     }
 
@@ -198,9 +232,11 @@ class CRUDEngine {
     await this.lifecycleEngine.canPerform('read', doctype, tenantId, userId);
 
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
-    const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+    const tableName = meta.table_name;
 
-    const query = this.dbEngine.query(tableName, tenantId).whereNot('status', 'Deleted');
+    const query = this.dbEngine.query(tableName, tenantId).whereNot('status', 'Deleted').where(function() {
+      this.where('is_deleted', false).orWhereNull('is_deleted');
+    });
     
     const { page, pageSize, search, limit, offset, order_by, ...actualFilters } = filters;
 
@@ -210,8 +246,21 @@ class CRUDEngine {
     }
 
     if (search) {
-      const searchField = meta.title_field || 'name';
-      query.andWhere(searchField, 'like', `%${search}%`);
+      query.andWhere(function() {
+        const filterFields = meta.fields.filter(f => f.in_filter);
+        if (filterFields.length > 0) {
+          filterFields.forEach((f, idx) => {
+            if (idx === 0) {
+              this.where(f.fieldname, 'like', `%${search}%`);
+            } else {
+              this.orWhere(f.fieldname, 'like', `%${search}%`);
+            }
+          });
+        } else {
+          const searchField = meta.title_field || 'name';
+          this.where(searchField, 'like', `%${search}%`);
+        }
+      });
     }
 
     const _limit = limit ? parseInt(limit, 10) : (pageSize ? parseInt(pageSize, 10) : null);
@@ -231,16 +280,22 @@ class CRUDEngine {
         
         try {
           const linkedMeta = await this.metaEngine.getDocType(field.options, tenantId);
-          const linkedTableName = linkedMeta.name.startsWith('sys_') ? linkedMeta.name : `dt_${linkedMeta.name.toLowerCase()}`;
+          const linkedTableName = linkedMeta.table_name;
           const titleField = linkedMeta.title_field || 'name';
           
           const linkedRecords = await this.dbEngine.query(linkedTableName, tenantId)
             .whereIn('id', ids)
-            .select('id', titleField);
+            .select('*'); // Select all so we can safely check for 'code'
             
           const idToTitleMap = {};
           for (const lr of linkedRecords) {
-            idToTitleMap[lr.id] = lr[titleField] || lr.id;
+            const title = lr[titleField] || lr.name || lr.id;
+            // Format as "CODE - TITLE" if code exists and is different from title
+            if (lr.code && lr.code !== title && titleField !== 'code') {
+              idToTitleMap[lr.id] = `${lr.code} - ${title}`;
+            } else {
+              idToTitleMap[lr.id] = title;
+            }
           }
           
           for (const record of records) {
@@ -248,8 +303,38 @@ class CRUDEngine {
               record[field.fieldname] = idToTitleMap[record[field.fieldname]];
             }
           }
-        } catch (err) {
-          console.warn(`Failed to resolve link field ${field.fieldname} for ${doctype}:`, err.message);
+        } catch (e) {
+          logger.warn(`Failed to resolve link field ${field.fieldname}: ${e.message}`);
+        }
+      }
+    }
+
+    // Resolve sys_state for status field
+    if (records.length > 0) {
+      const stateIds = [...new Set(records.map(r => r.status).filter(Boolean))];
+      if (stateIds.length > 0) {
+        try {
+          const states = await this.dbEngine.query('sys_workflow_state', tenantId)
+            .whereIn('id', stateIds)
+            .select('id', 'name', 'style', 'is_terminal');
+            
+          const stateMap = {};
+          for (const s of states) {
+            stateMap[s.id] = s;
+          }
+          
+          for (const record of records) {
+            if (record.status && stateMap[record.status]) {
+              const st = stateMap[record.status];
+              // Keep original ID in status_id, replace status with name for backward compatibility
+              record.status_id = record.status;
+              record.status = st.name;
+              record.status_style = st.style;
+              record.is_terminal_state = st.is_terminal;
+            }
+          }
+        } catch (e) {
+          logger.warn(`Failed to resolve sys_state for list: ${e.message}`);
         }
       }
     }
@@ -257,22 +342,28 @@ class CRUDEngine {
     // Inject social counts and is_liked
     if (records.length > 0) {
       const docIds = records.map(r => r.id);
-      const auditLogs = await this.dbEngine.query('sys_audit_log', tenantId, { includeDeleted: true })
-        .where('doctype', doctype)
-        .whereIn('doc_id', docIds)
-        .whereIn('action', ['LIKE', 'UNLIKE', 'COMMENT']);
+      
+      const meta = await this.metaEngine.getDocType(doctype, tenantId);
+      const tableName = meta.table_name;
+      
+      let auditLogs = [];
+      if (tableName !== 'sys_docfield') {
+        auditLogs = await this.dbEngine.getRawConnection()(`${tableName}_logs`)
+          .whereIn('doc_id', docIds)
+          .whereIn('status', ['Liked', 'Unliked', 'Commented']);
+      }
         
       for (const record of records) {
         const logs = auditLogs.filter(l => l.doc_id === record.id);
-        const likes = logs.filter(l => l.action === 'LIKE').length;
-        const unlikes = logs.filter(l => l.action === 'UNLIKE').length;
+        const likes = logs.filter(l => l.status === 'Liked').length;
+        const unlikes = logs.filter(l => l.status === 'Unliked').length;
         record.likes = Math.max(0, likes - unlikes);
-        record.comments = logs.filter(l => l.action === 'COMMENT').length;
+        record.comments = logs.filter(l => l.status === 'Commented').length;
         
         // Find last like/unlike by current user
-        const myLogs = logs.filter(l => l.user_id === userId && (l.action === 'LIKE' || l.action === 'UNLIKE'))
+        const myLogs = logs.filter(l => l.created_by === userId && (l.status === 'Liked' || l.status === 'Unliked'))
                            .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-        record.is_liked = myLogs.length > 0 && myLogs[0].action === 'LIKE';
+        record.is_liked = myLogs.length > 0 && myLogs[0].status === 'Liked';
       }
     }
     
@@ -284,7 +375,7 @@ class CRUDEngine {
    */
   async update(doctype, id, data, tenantId, userId) {
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
-    const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+    const tableName = meta.table_name;
 
     let existingDoc;
     if (meta.is_single) {
@@ -322,49 +413,78 @@ class CRUDEngine {
     this._validate(parentData, meta, true);
 
     const updateData = {
-      ...parentData,
-      updated_by: userId,
-      updated_at: new Date()
+      ...parentData
     };
     // Ensure critical fields aren't updated
     delete updateData.id;
-    delete updateData.tenant_id;
-    delete updateData.created_by;
-    delete updateData.created_at;
+    delete updateData.code;
     delete updateData.status;
 
     const trx = await this.dbEngine.getRawConnection().transaction();
     try {
-      await trx(tableName)
-        .where({ id: existingDoc.id, tenant_id: tenantId })
-        .update(updateData);
+      // 1. Copy old data to _version table
+      if (tableName !== 'sys_docfield') {
+        const oldData = { ...existingDoc, doc_id: existingDoc.id, backup_by: userId, backup_at: new Date() };
+        delete oldData.id; // it will be auto_increment in version table
+        await trx(`${tableName}_version`).insert(oldData);
+      }
 
+      // 2. Update main table
+      await trx(tableName)
+        .where({ id: existingDoc.id })
+        .update(updateData);
+        
+      // 3. Insert into _logs
+      if (tableName !== 'sys_docfield') {
+        await trx(`${tableName}_logs`).insert({
+          doc_id: existingDoc.id,
+          status: 'Updated',
+          content: record.name || existingDoc.name || null,
+          created_by: userId,
+          created_at: new Date()
+        });
+      }
+
+      // 4. Update children
       for (const child of childrenData) {
         if (!child.options) continue;
         const childMeta = await this.metaEngine.getDocType(child.options, tenantId);
-        const childTableName = childMeta.name.startsWith('sys_') ? childMeta.name : `dt_${childMeta.name.toLowerCase()}`;
+        const childTableName = childMeta.table_name;
         
-        // Hard delete existing children (easiest way to sync)
+        // Find existing children to back them up?
+        // For simplicity, we just delete and re-insert, but without backing up children individually unless requested.
+        // The prompt says "table_name_version (struct sama + doc_id, copy data 1 record, before UPDATED)"
+        // It didn't explicitly say for children, but we should probably just handle parents for now as requested.
+        
         await trx(childTableName).where({ parent_id: existingDoc.id, parent_field: child.fieldname }).del();
         
         let idx = 0;
         for (const row of child.records) {
-          const childId = uuidv4();
           const childRecord = {
             ...row,
-            id: childId,
-            tenant_id: tenantId,
             parent_id: existingDoc.id,
             parent_doctype: doctype,
             parent_field: child.fieldname,
             idx: idx++,
-            created_by: existingDoc.created_by || userId,
-            updated_by: userId,
-            created_at: existingDoc.created_at || new Date(),
-            updated_at: new Date(),
             status: childMeta.initial_status || 'Active',
           };
-          await trx(childTableName).insert(childRecord);
+          delete childRecord.id;
+          
+          if (childMeta.auto_code && !childRecord.code) {
+             childRecord.code = await this.namingEngine.generateCode(childMeta, childRecord, childTableName);
+          }
+          
+          const [childId] = await trx(childTableName).insert(childRecord);
+          
+          if (childTableName !== 'sys_docfield') {
+            await trx(`${childTableName}_logs`).insert({
+              doc_id: childId,
+              status: 'Created',
+              content: childRecord.name || null,
+              created_by: userId,
+              created_at: new Date()
+            });
+          }
         }
       }
 
@@ -392,7 +512,7 @@ class CRUDEngine {
    */
   async delete(doctype, id, tenantId, userId, reason = null) {
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
-    const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+    const tableName = meta.table_name;
 
     const existingDoc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
     if (!existingDoc || existingDoc.status === 'Deleted') {
@@ -409,13 +529,19 @@ class CRUDEngine {
     await this.dbEngine.query(tableName, tenantId)
       .where({ id })
       .update({
-        status: 'Deleted',
-        deleted_at: new Date(),
-        deleted_by: userId,
-        delete_reason: reason,
-        updated_at: new Date(),
-        updated_by: userId
+        is_deleted: true
       });
+      
+    // Insert into _logs
+    if (tableName !== 'sys_docfield') {
+      await this.dbEngine.getRawConnection()(`${tableName}_logs`).insert({
+        doc_id: id,
+        status: 'Deleted',
+        content: existingDoc.name || null,
+        created_by: userId,
+        created_at: new Date()
+      });
+    }
 
     // Emit after_delete event
     await this.eventEngine.emit(`${doctype}.after_delete`, { id, status: 'Deleted', delete_reason: reason }, { 
@@ -432,7 +558,7 @@ class CRUDEngine {
 
   async submit(doctype, id, tenantId, userId) {
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
-    const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+    const tableName = meta.table_name;
 
     const doc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
     if (!doc || doc.status === 'Deleted') throw new NotFoundError(`${doctype} with ID ${id} not found.`);
@@ -454,7 +580,7 @@ class CRUDEngine {
 
   async cancel(doctype, id, tenantId, userId, reason = null) {
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
-    const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+    const tableName = meta.table_name;
 
     const doc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
     if (!doc || doc.status === 'Deleted') throw new NotFoundError(`${doctype} with ID ${id} not found.`);
@@ -462,12 +588,7 @@ class CRUDEngine {
     await this.lifecycleEngine.canPerform('cancel', doctype, tenantId, userId, doc);
 
     await this.dbEngine.query(tableName, tenantId).where({ id }).update({
-      status: 'Cancelled',
-      cancelled_at: new Date(),
-      cancelled_by: userId,
-      cancel_reason: reason,
-      updated_at: new Date(),
-      updated_by: userId
+      status: 'Cancelled'
     });
 
     return this.get(doctype, id, tenantId, userId);
@@ -475,7 +596,7 @@ class CRUDEngine {
 
   async toggleLock(doctype, id, newStatus, tenantId, userId) {
     const meta = await this.metaEngine.getDocType(doctype, tenantId);
-    const tableName = meta.name.startsWith('sys_') ? meta.name : `dt_${meta.name.toLowerCase()}`;
+    const tableName = meta.table_name;
 
     const doc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
     if (!doc || doc.status === 'Deleted') throw new NotFoundError(`${doctype} with ID ${id} not found.`);
@@ -483,12 +604,26 @@ class CRUDEngine {
     // Require admin or specific permission? (skip for now, handled by route or logic)
     
     await this.dbEngine.query(tableName, tenantId).where({ id }).update({
-      status: newStatus,
-      updated_at: new Date(),
-      updated_by: userId
+      status: newStatus
     });
 
-    await this.eventEngine.emit(`${doctype}.${newStatus === 'Locked' ? 'locked' : 'unlocked'}`, { doc_id: id }, { 
+    if (tableName !== 'sys_docfield') {
+      try {
+        await this.dbEngine.getRawConnection()(`${tableName}_logs`).insert({
+          doc_id: id,
+          status: newStatus,
+          content: doc.name || null,
+          created_by: userId,
+          created_at: new Date()
+        });
+      } catch (err) {
+        // Table might not exist or log failed, safely ignore
+      }
+    }
+
+    const updatedDoc = { ...doc, status: newStatus };
+
+    await this.eventEngine.emit(`${doctype}.${newStatus === 'Locked' ? 'locked' : 'unlocked'}`, { doc: updatedDoc }, { 
       tenant_id: tenantId, 
       user_id: userId, 
       doc_id: id, 

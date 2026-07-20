@@ -11,12 +11,21 @@ export default function FormField({ field, register, control, error, readOnly })
 
   useEffect(() => {
     if (fieldtype === 'Link' && options) {
-      // options contains the doctype name to link to
-      apiClient.get(`/api/v1/doc/${options}?limit=100`)
-        .then(res => {
-          if (res.data.success) {
-             const data = Array.isArray(res.data.data) ? res.data.data : (res.data.data.records || []);
-             setLinkOptions(data.map(d => ({ value: d.id, label: d.name || d.full_name || d.title || d.id })));
+      Promise.all([
+        apiClient.get(`/api/v1/doc/${options}?limit=100`),
+        apiClient.get(`/api/v1/meta/doctype/${options}`)
+      ])
+        .then(([docRes, metaRes]) => {
+          if (docRes.data.success && metaRes.data.success) {
+             const data = Array.isArray(docRes.data.data) ? docRes.data.data : (docRes.data.data.records || []);
+             const meta = metaRes.data.data;
+             const searchField = meta.fields.find(f => f.in_search);
+             const searchFieldName = searchField ? searchField.fieldname : null;
+
+             setLinkOptions(data.map(d => ({ 
+               value: d.id, 
+               label: searchFieldName && d[searchFieldName] ? d[searchFieldName] : (d.name || d.full_name || d.title || d.code || d.id) 
+             })));
           }
         })
         .catch(err => console.error('Failed to fetch link options', err));

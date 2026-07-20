@@ -39,6 +39,9 @@ class AuditEngine {
     EventEngine.on('*.liked', (p, c) => this._handleSocialEvent('LIKE', p, c));
     EventEngine.on('*.unliked', (p, c) => this._handleSocialEvent('UNLIKE', p, c));
 
+    // Subscribe to Workflow Transitions
+    EventEngine.on('*.workflow.transition', (p, c) => this._handleWorkflowEvent('Transition', p, c));
+
     // Start background flusher
     this.flushInterval = setInterval(() => this._flushLogs(), 1000);
     
@@ -76,8 +79,8 @@ class AuditEngine {
       changeSummary = `Updated fields: ${changedFields}`;
     }
 
-    const docId = doc.name || doc.id;
-    const docNameTitle = doc.title || docId;
+    const docId = doc.id;
+    const docNameTitle = (doc.code ? `${doc.code}${doc.name ? ' - ' + doc.name : ''}` : null) || doc.title || doc.name || docId;
 
     // Queue Global Log
     const globalEntry = this._createGlobalLogEntry({
@@ -94,24 +97,9 @@ class AuditEngine {
       change_summary: changeSummary
     });
     this.logQueue.push({ type: 'global', data: globalEntry });
-
-    // Queue Local Log
-    const localEntry = this._createLocalLogEntry({
-      action,
-      tenant_id: context.tenant_id,
-      doctype,
-      doc_id: docId,
-      doc_name: docNameTitle,
-      user_id: context.user_id,
-      user_name: context.user_name || 'System',
-      user_avatar: context.user_avatar,
-      diff: action === 'Updated' ? { fields: Object.keys(diff) } : null,
-      change_summary: changeSummary
-    });
-    this.logQueue.push({ type: 'local', doctype, data: localEntry });
   }
 
-  _handleSocialEvent(action, payload, context) {
+  async _handleSocialEvent(action, payload, context) {
     const { doctype, doc_id, comment } = payload;
     if (!doctype || !doc_id) return;
 
@@ -131,20 +119,43 @@ class AuditEngine {
     });
     this.logQueue.push({ type: 'global', data: globalEntry });
 
-    // Queue Local Log
-    const localEntry = this._createLocalLogEntry({
-      action,
+    // Insert into local _logs table
+    try {
+      const metaEngine = (await import('../Container.js')).default.resolve('MetadataEngine');
+      const meta = await metaEngine.getDocType(doctype, context.tenant_id);
+      if (meta && meta.table_name && meta.table_name !== 'sys_docfield') {
+        const knex = DatabaseEngine.getRawConnection();
+        await knex(`${meta.table_name}_logs`).insert({
+          doc_id: doc_id,
+          status: changeSummary,
+          content: comment || payload.doc_name || null,
+          created_by: context.user_id,
+          created_at: new Date()
+        });
+      }
+    } catch (e) {
+      logger.error('Failed to insert social event to local log:', e);
+    }
+  }
+  _handleWorkflowEvent(action, payload, context) {
+    const { doc_id, doctype, from_state_id, to_state_id, comment, action_name } = payload;
+    if (!doctype || !doc_id) return;
+
+    let changeSummary = `Workflow Transition: ${action_name || 'State changed'}`;
+
+    // Queue Global Log
+    const globalEntry = this._createGlobalLogEntry({
+      action: action_name || 'Transition',
       tenant_id: context.tenant_id,
       doctype,
       doc_id: doc_id,
       doc_name: payload.doc_name || doc_id,
       user_id: context.user_id,
       user_name: context.user_name || 'System',
-      user_avatar: context.user_avatar,
-      comment: comment || null,
-      change_summary: changeSummary
+      change_summary: changeSummary,
+      metadata: comment ? { comment, from_state_id, to_state_id } : { from_state_id, to_state_id }
     });
-    this.logQueue.push({ type: 'local', doctype, data: localEntry });
+    this.logQueue.push({ type: 'global', data: globalEntry });
   }
 
   // --- Helpers ---
@@ -217,37 +228,14 @@ class AuditEngine {
     
     const batch = this.logQueue.splice(0, 100);
     const globalLogs = batch.filter(item => item.type === 'global').map(item => item.data);
-    const localLogs = batch.filter(item => item.type === 'local');
 
     try {
       // Write Global Logs
       if (globalLogs.length > 0) {
         await knex('sys_audit_log').insert(globalLogs);
       }
-
-      // Write Local Logs (grouped by doctype table)
-      if (localLogs.length > 0) {
-        const groupedLocal = {};
-        for (const item of localLogs) {
-          const tableName = `dt_${item.doctype.toLowerCase().replace(/ /g, '_')}_logs`;
-          if (!groupedLocal[tableName]) groupedLocal[tableName] = [];
-          groupedLocal[tableName].push(item.data);
-        }
-
-        for (const [tableName, logs] of Object.entries(groupedLocal)) {
-          // Check if table exists before inserting, or catch and ignore if it doesn't
-          // Ignore if local log table doesn't exist
-          try {
-            await knex(tableName).insert(logs);
-          } catch (tableErr) {
-            // Local log table might not exist yet if it's a new or system doctype without tracking
-          }
-        }
-      }
     } catch (err) {
       logger.error('Failed to flush audit logs to database:', err);
-      // Re-queue
-      // this.logQueue.unshift(...batch);
     } finally {
       this.isFlushing = false;
     }

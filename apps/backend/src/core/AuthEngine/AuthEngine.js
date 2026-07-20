@@ -47,16 +47,16 @@ class AuthEngine {
     }
 
     // Check if locked
-    if (user.status === 'Locked' && user.locked_until && new Date() < new Date(user.locked_until)) {
-      throw new AuthenticationError(`Account is locked until ${user.locked_until}.`);
-    } else if (user.status === 'Locked' && user.locked_until && new Date() >= new Date(user.locked_until)) {
-      // Auto-unlock if time has passed
-      await knex('sys_user').where({ id: user.id }).update({ status: 'Active', failed_login_count: 0, locked_until: null });
-      user.status = 'Active';
+    if (user.locked_until && new Date() < new Date(user.locked_until)) {
+      const waitMinutes = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
+      throw new AuthenticationError(`Account is temporarily locked. Try again in ${waitMinutes} minutes.`);
+    } else if (user.locked_until && new Date() >= new Date(user.locked_until)) {
+      // Lock expired, reset
+      await knex('sys_user').where({ id: user.id }).update({ failed_login_count: 0, locked_until: null });
     }
 
-    if (user.status !== 'Active') {
-      throw new AuthenticationError(`User account is not active (Status: ${user.status})`);
+    if (user.is_deleted || (user.status !== 'Submitted' && user.status !== 'Active')) {
+      throw new AuthenticationError(`User account is not active`);
     }
 
     // Verify password
@@ -67,7 +67,6 @@ class AuthEngine {
       const updateData = { failed_login_count: failCount };
       
       if (failCount >= MAX_FAILED_LOGINS) {
-        updateData.status = 'Locked';
         updateData.locked_until = new Date(Date.now() + LOCK_DURATION_MINUTES * 60000);
         EventEngine.emit('user.locked', { userId: user.id, email: user.email });
       }
@@ -83,7 +82,6 @@ class AuthEngine {
     await knex('sys_user').where({ id: user.id }).update({ 
       last_login_at: knex.fn.now(),
       failed_login_count: 0,
-      status: 'Active',
       locked_until: null
     });
 
@@ -92,7 +90,14 @@ class AuthEngine {
     // Emit login event
     EventEngine.emit('user.login', { userId: user.id, email: user.email }, { tenant_id: user.tenant_id, user_id: user.id });
 
-    // TODO: Load roles correctly if needed. For now just returning what we have.
+    // Load roles
+    const userRoles = await knex('sys_user_role')
+      .join('sys_role', 'sys_user_role.role_id', 'sys_role.id')
+      .where('sys_user_role.user_id', user.id)
+      .select('sys_role.name');
+    
+    const roleNames = userRoles.map(r => r.name);
+
     return {
       token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
@@ -100,7 +105,9 @@ class AuthEngine {
         id: user.id,
         tenantId: user.tenant_id,
         email: user.email,
-        fullName: user.full_name,
+        name: user.name,
+        fullName: user.name, // Keep fullName for backwards compatibility in UI
+        roles: roleNames,
         avatarUrl: user.avatar_url,
         language: user.language,
         timezone: user.timezone,
@@ -166,12 +173,13 @@ class AuthEngine {
    * @param {string} email 
    * @param {string} pin 
    */
-  async verifyPin(email, pin) {
+  async loginWithPin(email, pin) {
+    if (!email || !pin) throw new ValidationError('Email and PIN are required');
+    
     const knex = DatabaseEngine.getRawConnection();
     const user = await knex('sys_user').where({ email }).first();
-    
-    if (!user || !user.pin_hash) {
-      throw new AuthenticationError('User or PIN not found');
+    if (!user || user.is_deleted || (user.status !== 'Submitted' && user.status !== 'Active')) {
+      throw new AuthenticationError('Invalid email or PIN');
     }
 
     const isMatch = await bcrypt.compare(pin, user.pin_hash);

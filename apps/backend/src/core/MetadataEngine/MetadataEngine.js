@@ -54,9 +54,17 @@ class MetadataEngine {
 
     // 2. Fetch from DB
     // Fetch DocType
-    const doctype = await this.dbEngine.query('sys_doctype', queryTenantId)
-      .where({ name, is_active: true })
-      .first();
+    // The parameter `name` could be a table_name (like sys_user) or an ID (for internally linked stuff), but usually it's table_name.
+    let doctype;
+    if (typeof name === 'number' || !isNaN(Number(name))) {
+      doctype = await this.dbEngine.query('sys_doctype', queryTenantId)
+        .where({ id: Number(name), status: 'Active' })
+        .first();
+    } else {
+      doctype = await this.dbEngine.query('sys_doctype', queryTenantId)
+        .where({ table_name: name, status: 'Active' })
+        .first();
+    }
 
     if (!doctype) {
       throw new NotFoundError(`DocType '${name}' not found or inactive for this tenant.`);
@@ -64,7 +72,7 @@ class MetadataEngine {
 
     // Fetch Fields
     const fields = await this.dbEngine.query('sys_docfield', queryTenantId, { includeDeleted: true })
-      .where({ doctype_id: doctype.id })
+      .where({ doctype: doctype.table_name })
       .orderBy('sort_order', 'asc');
 
     const metadata = {

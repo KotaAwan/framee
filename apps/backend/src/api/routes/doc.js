@@ -185,13 +185,57 @@ router.post('/:doctype/:id/cancel', async (req, res, next) => {
 });
 
 /**
- * POST /api/v1/doc/:doctype/:id/toggle-lock
- * Toggle Lock status (Quick Action).
+ * POST /api/v1/doc/:doctype/:id/unlock
+ * Unlock a document (Draft).
  */
-router.post('/:doctype/:id/toggle-lock', async (req, res, next) => {
+router.post('/:doctype/:id/unlock', async (req, res, next) => {
   try {
     const crudEngine = getCrudEngine();
-    const record = await crudEngine.toggleLock(req.params.doctype, req.params.id, req.body.status, req.tenantId, req.userId);
+    const record = await crudEngine.toggleLock(req.params.doctype, req.params.id, 'Draft', req.tenantId, req.userId);
+    res.json({ success: true, data: record });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+// --- WORKFLOW ENDPOINTS ---
+
+const getWorkflowEngine = () => require('../../core/Container.js').default.resolve('WorkflowEngine');
+
+/**
+ * GET /api/v1/doc/:doctype/:id/workflow/transitions
+ * Get available workflow transitions for a document
+ */
+router.get('/:doctype/:id/workflow/transitions', async (req, res, next) => {
+  try {
+    const workflowEngine = getWorkflowEngine();
+    // Assuming req.user is set by auth middleware, if not we only have userId.
+    // In our system, auth middleware attaches req.user object.
+    const user = req.user || { id: req.userId, is_system_user: true }; // Fallback
+    const transitions = await workflowEngine.getAvailableTransitions(req.params.doctype, req.params.id, req.tenantId, user);
+    res.json({ success: true, data: transitions });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/doc/:doctype/:id/workflow/transition
+ * Execute a workflow transition
+ */
+router.post('/:doctype/:id/workflow/transition', async (req, res, next) => {
+  try {
+    const workflowEngine = getWorkflowEngine();
+    const user = req.user || { id: req.userId, is_system_user: true }; // Fallback
+    const record = await workflowEngine.executeTransition(
+      req.params.doctype, 
+      req.params.id, 
+      req.body.action, 
+      req.body.comment,
+      req.tenantId, 
+      user
+    );
     res.json({ success: true, data: record });
   } catch (error) {
     next(error);
@@ -338,7 +382,7 @@ router.post('/:doctype/:id/versions/:version/restore', async (req, res, next) =>
 
 // --- WORKFLOW ENDPOINTS ---
 
-const getWorkflowEngine = () => Container.resolve('WorkflowEngine');
+
 
 /**
  * GET /api/v1/doc/:doctype/:id/workflow
@@ -347,7 +391,8 @@ const getWorkflowEngine = () => Container.resolve('WorkflowEngine');
 router.get('/:doctype/:id/workflow', async (req, res, next) => {
   try {
     const wfEngine = getWorkflowEngine();
-    const transitions = await wfEngine.getAvailableTransitions(req.params.doctype, req.params.id, req.tenantId, req.user);
+    const user = req.user || { id: req.userId, is_system_user: true }; // Fallback
+    const transitions = await wfEngine.getAvailableTransitions(req.params.doctype, req.params.id, req.tenantId, user);
     res.json({ success: true, data: { available_transitions: transitions } });
   } catch (error) {
     next(error);

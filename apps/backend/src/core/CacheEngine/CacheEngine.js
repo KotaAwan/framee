@@ -4,42 +4,16 @@ import { logger } from '../../utils/logger.js';
 
 class CacheEngine {
   constructor() {
-    this.redis = null;
-    this.isConnected = false;
+    this.cache = new Map();
+    this.isConnected = true; // Always true for in-memory
   }
 
   /**
-   * Initializes the Redis connection.
+   * Initializes the Cache connection (No-op for in-memory).
    */
   async init() {
-    if (this.redis) return;
-
-    logger.info('Initializing Cache Engine...');
-
-    this.redis = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
-      password: config.redis.password,
-      // Retry strategy
-      retryStrategy(times) {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      }
-    });
-
-    return new Promise((resolve, reject) => {
-      this.redis.on('connect', () => {
-        this.isConnected = true;
-        logger.info('Cache Engine connected successfully to Redis.');
-        resolve();
-      });
-
-      this.redis.on('error', (err) => {
-        logger.error('Redis connection error:', err);
-        // Do not reject here so the app can still start without Redis (if fallback is implemented)
-        // But for Framee, metadata requires cache. We log it.
-      });
-    });
+    logger.info('Initializing In-Memory Cache Engine...');
+    this.isConnected = true;
   }
 
   /**
@@ -50,8 +24,16 @@ class CacheEngine {
   async get(key) {
     if (!this.isConnected) return null;
     try {
-      const data = await this.redis.get(key);
-      return data ? JSON.parse(data) : null;
+      const entry = this.cache.get(key);
+      if (!entry) return null;
+      
+      // Check expiration
+      if (entry.expiresAt && Date.now() > entry.expiresAt) {
+        this.cache.delete(key);
+        return null;
+      }
+      
+      return JSON.parse(entry.data);
     } catch (err) {
       logger.error(`CacheEngine GET error for key ${key}:`, err);
       return null;
@@ -68,7 +50,8 @@ class CacheEngine {
     if (!this.isConnected) return;
     try {
       const data = JSON.stringify(value);
-      await this.redis.set(key, data, 'EX', ttlSeconds);
+      const expiresAt = Date.now() + (ttlSeconds * 1000);
+      this.cache.set(key, { data, expiresAt });
     } catch (err) {
       logger.error(`CacheEngine SET error for key ${key}:`, err);
     }
@@ -81,21 +64,26 @@ class CacheEngine {
   async del(key) {
     if (!this.isConnected) return;
     try {
-      await this.redis.del(key);
+      this.cache.delete(key);
     } catch (err) {
       logger.error(`CacheEngine DEL error for key ${key}:`, err);
     }
   }
 
   /**
+   * Clears all cache.
+   */
+  async flushAll() {
+    this.cache.clear();
+  }
+
+  /**
    * Gracefully close connection.
    */
   async close() {
-    if (this.redis) {
-      await this.redis.quit();
-      this.isConnected = false;
-      logger.info('Cache Engine connection closed.');
-    }
+    this.cache.clear();
+    this.isConnected = false;
+    logger.info('In-Memory Cache Engine closed.');
   }
 }
 

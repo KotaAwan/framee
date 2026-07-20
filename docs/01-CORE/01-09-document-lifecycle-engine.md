@@ -501,6 +501,19 @@ Status: Cancelled → (read-only, no actions)
 ## Notes
 
 - **Status vs. Workflow State**: These are two separate things. `status` is the document's lifecycle position (Draft, Submitted, Locked, etc.). `workflow_state` is where the document is in a user-defined approval process (e.g., Pending Manager Review). Both can coexist on the same document.
-- **Audit Integrity**: The immutability guarantee is the point. A posted invoice with `status = Locked` guarantees to any auditor that the values in that row are exactly what was posted. This is not possible with `is_locked = 1` that an admin could flip at will.
+
+## System Lifecycle vs Custom Workflows
+
+Berdasarkan arsitektur Framee, terdapat pemisahan tegas antara **Lifecycle Status** (Internal Sistem) dan **Workflow State** (Alur Bisnis Kustom):
+
+1. **System Lifecycle (`status`)**:
+   - Merupakan field wajib bawaan sistem (contoh nilai: `Draft`, `Active`, `Submitted`, `Locked`, `Cancelled`, `Deleted`).
+   - Bertujuan sebagai pengunci keamanan data level Core (contoh: CRUD Engine akan menolak edit jika status adalah `Locked`).
+   
+2. **Custom Workflows (`workflow_state`)**:
+   - Merupakan alur persetujuan dinamis yang **bisa berbeda untuk setiap DocType**.
+   - Setiap DocType dapat dikonfigurasi memiliki Workflow masing-masing.
+   - Perubahan pada `workflow_state` secara otomatis dapat memicu perubahan pada system `status` (misal: Saat `workflow_state` menjadi "Approved", sistem akan mengeset `status` menjadi `Locked`).
+   - Untuk mengaktifkan ini, DocType akan memiliki kolom tambahan `workflow_state` yang menjadi penunjuk (pointer) ke Master Workflow.- **Audit Integrity**: The immutability guarantee is the point. A posted invoice with `status = Locked` guarantees to any auditor that the values in that row are exactly what was posted. This is not possible with `is_locked = 1` that an admin could flip at will.
 - **No `is_deleted`**: This is a permanent architectural decision. Any plugin or code that uses `is_deleted` is non-compliant. All status checks must go through `canPerform()` or a status field check.
 - **Amendment is the "edit" for locked documents**: The framework intentionally provides no "unlock and edit" escape hatch. The correct pattern is always: Cancel → Amend → new Draft. This keeps the audit trail unbroken.
