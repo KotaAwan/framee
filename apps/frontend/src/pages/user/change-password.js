@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useAuthStore } from '@/store/auth.store';
 import apiClient from '@/lib/api.client';
-import { Settings, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Settings, Loader2, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -60,12 +60,12 @@ export default function ChangePassword() {
       });
 
       if (res.data.success) {
-        setMessage('success:Password updated successfully!');
+        setMessage('success:' + t('password.success', 'Password updated successfully!'));
         setCurrentPassword('');
         setNewPassword('');
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.message || 'Failed to update password.';
+      const errorMsg = error.response?.data?.message || t('password.error', 'Failed to update password.');
       setMessage(errorMsg);
     } finally {
       setIsSaving(false);
@@ -113,25 +113,27 @@ export default function ChangePassword() {
             disabled={isSaving}
             className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
           >
-            {isSaving ? 'Updating...' : t('update', 'Update')}
+            {isSaving ? t('profile.update_ing', 'Updating...') : t('profile.update', 'Update')}
           </button>
         </div>
+
+        {message && (
+          <div className={`p-4 mb-6 rounded-lg text-sm font-medium shadow-sm animate-in fade-in zoom-in duration-300 flex items-center gap-2 ${isSuccessMessage ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+            {!isSuccessMessage && <AlertTriangle size={18} className="text-white" />}
+            <div className="whitespace-pre-line">{displayMessage}</div>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden">
           <div className="px-5 pt-4 pb-3 border-b border-(--color-border) bg-(--color-section-header-bg) flex items-center justify-between">
-            <h3 className="font-semibold text-(--color-text) text-base">General</h3>
+            <h3 className="font-semibold text-(--color-text) text-base">{t('profile.general', 'General')}</h3>
             <span className="text-sm font-semibold text-(--color-text)">
-              ID : {idField}
+              {t('profile.id', 'ID')} : {idField}
             </span>
           </div>
           
           <div className="px-5 pt-5 pb-8">
-            {message && (
-              <div className={`p-4 mb-6 rounded-md text-sm font-medium ${isSuccessMessage ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                {displayMessage}
-              </div>
-            )}
 
             <form onSubmit={handleUpdatePassword} className="space-y-4">
               <div className="flex flex-col gap-4">
@@ -151,7 +153,7 @@ export default function ChangePassword() {
                 {/* Current Password */}
                 <div>
                   <label className="block text-sm font-medium text-(--color-text) mb-1">
-                    Current Password
+                    {t('password.current', 'Current Password')}
                   </label>
                   <div className="relative">
                     <input
@@ -174,7 +176,7 @@ export default function ChangePassword() {
                 {/* New Password */}
                 <div>
                   <label className="block text-sm font-medium text-(--color-text) mb-1">
-                    New Password
+                    {t('password.new', 'New Password')}
                   </label>
                   <div className="relative">
                     <input

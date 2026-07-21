@@ -1,6 +1,8 @@
 import express from 'express';
 import { AuthenticationError } from '../../utils/errors.js';
 import AuthEngine from '../../core/AuthEngine/AuthEngine.js';
+import Container from '../../core/Container.js';
+import { authMiddleware } from '../middlewares/tenantAuth.js';
 
 const router = express.Router();
 
@@ -78,5 +80,27 @@ router.post('/verify-pin', async (req, res, next) => {
 
 // Note: Google SSO and Change Password endpoints omitted for brevity but should follow the same pattern.
 // We can implement them in AuthEngine as needed.
+
+/**
+ * GET /api/v1/auth/permissions/:doctype
+ * Get permissions for a specific doctype for the current user
+ */
+router.get('/permissions/:doctype', authMiddleware, async (req, res, next) => {
+  try {
+    const permEngine = Container.resolve('PermissionEngine');
+    const permissionsMap = await permEngine.getPermissions(req.userId);
+    const doctypePerms = permissionsMap.doctypes[req.params.doctype] || {
+      read: false, update: false, create: false, delete: false,
+      lock: false, unlock: false, export: false, share: false, print: false
+    };
+
+    res.json({
+      success: true,
+      data: doctypePerms
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;

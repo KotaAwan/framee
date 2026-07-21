@@ -9,6 +9,7 @@ import Icon from '../ui/Icon';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { useAuthStore } from '../../store/auth.store';
+import { useTranslation } from '@/hooks/useTranslation';
 
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -25,6 +26,7 @@ function useDebounce(value, delay) {
 
 export default function DynamicList({ doctype, module }) {
   const router = useRouter();
+  const { t } = useTranslation();
   
   // State for data
   const [data, setData] = useState([]);
@@ -39,6 +41,7 @@ export default function DynamicList({ doctype, module }) {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [rowSelection, setRowSelection] = useState({});
   const [meta, setMeta] = useState(null);
+  const [permissions, setPermissions] = useState(null);
 
   // Column Visibility States
   const [visibleColumns, setVisibleColumns] = useState({});
@@ -77,7 +80,15 @@ export default function DynamicList({ doctype, module }) {
     if (!doctype) return;
     const fetchMeta = async () => {
       try {
-        const res = await apiClient.get(`/api/v1/meta/doctype/${doctype}`);
+        const [res, permRes] = await Promise.all([
+          apiClient.get(`/api/v1/meta/doctype/${doctype}`),
+          apiClient.get(`/api/v1/auth/permissions/${doctype}`)
+        ]);
+
+        if (permRes.data.success) {
+          setPermissions(permRes.data.data);
+        }
+
         if (res.data.success) {
           const metaData = res.data.data;
           setMeta(metaData);
@@ -187,7 +198,7 @@ export default function DynamicList({ doctype, module }) {
       .sort((a, b) => (a.list_view_seq || 99) - (b.list_view_seq || 99))
       .map(f => ({
         id: f.fieldname,
-        header: f.label,
+        header: t(f.label, f.label),
         accessorKey: f.fieldname,
         type: f.fieldtype
       }));
@@ -196,16 +207,17 @@ export default function DynamicList({ doctype, module }) {
     if (visibleColumns['id'] !== false) {
       dynamicCols.unshift({
         id: 'id',
-        header: 'ID',
+        header: t('ID', 'ID'),
         accessorKey: 'id',
         type: 'Data'
       });
     }
 
     return dynamicCols;
-  }, [meta, visibleColumns]);
+  }, [meta, visibleColumns, t]);
 
-  const formattedTitle = meta?.label || meta?.name || doctype.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  const rawTitle = meta?.label || meta?.name || doctype.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  const formattedTitle = t(rawTitle, rawTitle);
   const headerIcon = meta?.icon || 'Database';
 
   const handleExport = async (format) => {
@@ -529,7 +541,7 @@ export default function DynamicList({ doctype, module }) {
                     onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
                     className="w-full px-3 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) appearance-none pr-8"
                   >
-                    <option value="">Search {f.label}...</option>
+                    <option value="">{t('search', 'Search')} {t(f.label, f.label)}...</option>
                     {opts.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
@@ -550,9 +562,9 @@ export default function DynamicList({ doctype, module }) {
                     onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
                     className="w-full px-3 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) appearance-none pr-8"
                   >
-                    <option value="">Search {f.label}...</option>
-                    <option value="1">Yes</option>
-                    <option value="0">No</option>
+                    <option value="">{t('search', 'Search')} {t(f.label, f.label)}...</option>
+                    <option value="1">{t('yes', 'Yes')}</option>
+                    <option value="0">{t('no', 'No')}</option>
                   </select>
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-(--color-muted)">
                     <Filter size={12} />
@@ -566,7 +578,7 @@ export default function DynamicList({ doctype, module }) {
               <input
                 key={f.fieldname}
                 type="text"
-                placeholder={`Search ${f.label}...`}
+                placeholder={`${t('search', 'Search')} ${t(f.label, f.label)}...`}
                 value={inputVal}
                 onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchData()}
@@ -606,7 +618,11 @@ export default function DynamicList({ doctype, module }) {
             {isActionsMenuOpen && (
               <div className="absolute right-0 top-full pt-1 z-10 w-48">
                 <div className="bg-(--color-surface) shadow-lg border border-(--color-border) rounded-md py-1">
-                   <button onClick={() => { document.getElementById('import-csv').click(); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
+                   <button 
+                      onClick={() => { document.getElementById('import-csv').click(); setIsActionsMenuOpen(false); }} 
+                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!permissions?.import}
+                   >
                      <Upload size={14} /> Import CSV
                    </button>
                    <input 
@@ -617,10 +633,18 @@ export default function DynamicList({ doctype, module }) {
                       onChange={handleImport}
                     />
                    <div className="border-t border-(--color-border) my-1"></div>
-                   <button onClick={() => { setIsActionsMenuOpen(false); handleExport('xlsx'); }} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
+                   <button 
+                      onClick={() => { setIsActionsMenuOpen(false); handleExport('xlsx'); }} 
+                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!permissions?.export}
+                   >
                      <Download size={14} /> Export XLSX
                    </button>
-                   <button onClick={() => { setIsActionsMenuOpen(false); handleExport('pdf'); }} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
+                   <button 
+                      onClick={() => { setIsActionsMenuOpen(false); handleExport('pdf'); }} 
+                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!permissions?.export}
+                   >
                      <Download size={14} /> Export PDF
                    </button>
                    <div className="border-t border-(--color-border) my-1"></div>
@@ -638,7 +662,7 @@ export default function DynamicList({ doctype, module }) {
           <button 
             className="flex items-center justify-center bg-(--color-primary) text-white w-9 h-9 rounded-md hover:bg-(--color-primary-hover) transition-colors"
             onClick={() => router.push(`/${module || 'doctype'}/${doctype}/new`)}
-            title="Create New"
+            title={t('Create New', 'Create New')}
           >
             <Plus size={18} />
           </button>
@@ -652,6 +676,7 @@ export default function DynamicList({ doctype, module }) {
           columns={columns} 
           loading={loading}
           doctype={doctype}
+          meta={meta}
           module={module}
           page={page}
           pageSize={pageSize}

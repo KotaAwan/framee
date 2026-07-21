@@ -78,7 +78,6 @@ export async function up(knex) {
     table.integer('module_id').unsigned().nullable();
     table.string('icon', 50).nullable();
     table.string('auto_code', 150).nullable(); // Previously autoname
-    table.boolean('is_printable').defaultTo(false);
     table.boolean('is_tree').defaultTo(false);
     table.boolean('is_single').defaultTo(false);
     table.boolean('is_deleted').defaultTo(false);

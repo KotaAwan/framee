@@ -1,15 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Menu, Bell, LogOut, Sun, Moon, ChevronDown, User, Key, Hash } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function Header({ sidebarOpen, setSidebarOpen }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const [theme, setTheme] = useState('light');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [menuRef]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('framee_theme') || 'light';
@@ -50,17 +65,12 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
           {/* Optional: unread indicator */}
         </button>
 
-        <div className="flex items-center gap-3 border-l border-(--color-border) pl-4 relative">
-          <div className="flex flex-col items-end hidden sm:flex">
-            <span className="text-sm font-semibold text-(--color-text)">{user?.name || user?.fullName || 'System Administrator'}</span>
-            <span className="text-[11px] text-(--color-muted) mt-0.5">{user?.roles?.[0] || 'User'}</span>
-          </div>
-          
+        <div ref={menuRef} className="flex items-center relative pl-2">
           <button 
-            className="flex items-center gap-1 hover:opacity-80 transition-opacity focus:outline-none"
+            className="flex items-center hover:opacity-80 transition-opacity focus:outline-none"
             onClick={() => setUserMenuOpen(!userMenuOpen)}
           >
-            <div className="h-8 w-8 rounded-full bg-(--color-primary) flex items-center justify-center text-white overflow-hidden relative text-xs font-bold">
+            <div className="h-8 w-8 rounded-full bg-(--color-primary) flex items-center justify-center text-white overflow-hidden relative text-xs font-bold shadow-sm border border-(--color-border)">
               {user?.avatarUrl ? (
                 <Image src={user.avatarUrl} alt="Avatar" fill className="object-cover" />
               ) : (
@@ -69,7 +79,6 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
                 </span>
               )}
             </div>
-            <ChevronDown size={14} className="text-(--color-muted) ml-1" />
           </button>
 
           {userMenuOpen && (
@@ -84,15 +93,15 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
                   className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover) transition-colors"
                 >
                   <User size={16} />
-                  My Profile
+                  {t('menu.profile', 'My Profile')}
                 </button>
                 <Link href="/user/change-password" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover) transition-colors">
                   <Key size={16} />
-                  Change Password
+                  {t('menu.change_password', 'Change Password')}
                 </Link>
                 <Link href="/user/change-pin" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover) transition-colors">
                   <Hash size={16} />
-                  Change PIN
+                  {t('menu.change_pin', 'Change PIN')}
                 </Link>
                 <div className="h-px bg-gray-100 my-1"></div>
                 <button 
@@ -100,7 +109,7 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
                   className="flex w-full items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium"
                 >
                   <LogOut size={16} className="mr-2" />
-                  Logout
+                  {t('menu.logout', 'Logout')}
                 </button>
               </div>
             </div>

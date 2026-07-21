@@ -67,21 +67,22 @@ class PermissionEngine {
     for (const p of permissions) {
       if (!doctypes[p.doctype]) {
         doctypes[p.doctype] = {
-          read: false, write: false, create: false, delete: false,
-          submit: false, cancel: false, export: false, share: false,
+          read: false, update: false, create: false, delete: false,
+          lock: false, unlock: false, export: false, share: false, print: false,
           if_owner: false, conditions: []
         };
       }
       
       const dt = doctypes[p.doctype];
       dt.read = dt.read || p.can_read;
-      dt.write = dt.write || p.can_write;
+      dt.update = dt.update || p.can_update;
       dt.create = dt.create || p.can_create;
       dt.delete = dt.delete || p.can_delete;
-      dt.submit = dt.submit || p.can_submit;
-      dt.cancel = dt.cancel || p.can_cancel;
+      dt.lock = dt.lock || p.can_lock;
+      dt.unlock = dt.unlock || p.can_unlock;
       dt.export = dt.export || p.can_export;
       dt.share = dt.share || p.can_share;
+      dt.print = dt.print || p.can_print;
       dt.if_owner = dt.if_owner || p.if_owner;
 
       if (p.condition_field && p.condition_value) {

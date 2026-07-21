@@ -9,9 +9,11 @@ import Icon from '../ui/Icon';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm as useRHF } from 'react-hook-form';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function DynamicForm({ doctype, recordId, readOnly = false, isModal = false, onLoadComplete }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [meta, setMeta] = useState(null);
@@ -308,7 +310,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
               <>
                 <Icon name={meta?.icon || 'FileText'} size={24} className="text-(--color-primary)" fallback="FileText" />
                 <h1 className="text-2xl font-bold tracking-tight text-(--color-text)">
-                  {meta?.label || meta?.name || formattedTitle}
+                  {t(meta?.label || meta?.name || formattedTitle, meta?.label || meta?.name || formattedTitle)}
                 </h1>
               </>
             )}
@@ -322,14 +324,14 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       {/* Toolbar (No Card) */}
       <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
           <div className="flex items-center gap-2">
-          {workflow?.available_transitions?.filter(t => !['Save', 'Update', 'Lock', 'Delete', ...(isModal ? ['Unlock'] : [])].includes(t.action))?.map(t => (
+          {workflow?.available_transitions?.filter(trans => !['Save', 'Update', 'Lock', 'Delete', ...(isModal ? ['Unlock'] : [])].includes(trans.action))?.map(trans => (
             <button 
-              key={t.action}
-              onClick={() => handleWorkflowTransition(t.action, t.require_comment)}
+              key={trans.action}
+              onClick={() => handleWorkflowTransition(trans.action, trans.require_comment)}
               disabled={saving || loading}
               className="bg-purple-100 text-purple-700 hover:bg-purple-200 px-4 py-2 rounded-md text-sm font-medium transition-colors"
             >
-              {t.action}
+              {t(trans.action, trans.action)}
             </button>
           ))}
           {!isNew && !isSingle && (
@@ -339,7 +341,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                 onClick={() => setShowVersions(true)}
                 className="flex items-center gap-1 bg-(--color-surface-hover) text-(--color-text) border border-(--color-border) px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
-                <History size={16} /> Versions
+                <History size={16} /> {t('Versions', 'Versions')}
               </button>
             </>
           )}
@@ -349,15 +351,15 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
               disabled={saving || loading}
               className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
             >
-              {saving ? 'Saving...' : (currentStatus === 'Draft' ? 'Update' : 'Save')}
+              {saving ? t('Saving...', 'Saving...') : (currentStatus === 'Draft' ? t('Update', 'Update') : t('Save', 'Save'))}
             </button>
         </div>
       </div>
 
       {errorMsg && (
-        <div className="p-4 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg flex flex-col gap-1.5 text-sm font-medium">
-          <div className="flex items-center gap-2 text-amber-900 font-bold">
-            <AlertTriangle size={18} className="text-amber-600" />
+        <div className="p-4 mb-6 bg-red-500 text-white rounded-lg flex flex-col gap-1.5 text-sm font-medium shadow-sm animate-in fade-in zoom-in duration-300">
+          <div className="flex items-center gap-2 font-bold">
+            <AlertTriangle size={18} className="text-white" />
             <span>Warning</span>
           </div>
           <div className="whitespace-pre-line pl-6">
@@ -367,7 +369,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       )}
 
       {successMsg && (
-        <div className="p-4 mb-4 bg-green-50 text-green-700 border border-green-200 rounded-lg shadow-sm font-medium animate-in fade-in zoom-in duration-300">
+        <div className="p-4 mb-6 bg-green-500 text-white rounded-lg shadow-sm text-sm font-medium animate-in fade-in zoom-in duration-300">
           {successMsg}
         </div>
       )}
@@ -384,10 +386,10 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
               fields.length > 0 && (
                 <div key={sectionName} className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden">
                   <div className="px-5 pt-4 pb-3 border-b border-(--color-border) bg-(--color-section-header-bg) flex items-center justify-between">
-                    <h3 className="font-semibold text-(--color-text) text-base">{sectionName}</h3>
+                    <h3 className="font-semibold text-(--color-text) text-base">{t(sectionName, sectionName)}</h3>
                     {(sectionName === 'General' || sectionName === 'Basic Details') && (
                       <span className="text-sm font-semibold text-(--color-text)">
-                        ID : {isNew ? 'Auto' : recordId}
+                        {t('ID', 'ID')} : {isNew ? t('Auto', 'Auto') : recordId}
                       </span>
                     )}
                   </div>
@@ -437,7 +439,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
         return (
           <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden mt-6">
              <div className="px-5 py-4 border-b border-(--color-border) bg-(--color-section-header-bg)">
-               <h3 className="font-semibold text-(--color-text) text-base">Change Password</h3>
+               <h3 className="font-semibold text-(--color-text) text-base">{t('Change Password', 'Change Password')}</h3>
              </div>
              <div className="px-5 py-6">
                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 max-w-sm">
@@ -445,7 +447,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                      <input 
                        type={showChangePassword ? 'text' : 'password'} 
                        id="new_password_input"
-                       placeholder="New Password" 
+                       placeholder={t('New Password', 'New Password')} 
                        className="w-full pl-4 pr-10 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) transition-all placeholder:text-(--color-input-placeholder)"
                      />
                      <button
@@ -472,7 +474,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                      }}
                      className="bg-(--color-primary) text-white px-5 py-2 rounded-md font-medium text-sm hover:bg-(--color-primary-hover) transition-colors whitespace-nowrap"
                    >
-                     Update
+                     {t('Update', 'Update')}
                    </button>
                </div>
              </div>

@@ -3,9 +3,11 @@ import { Eye, EyeOff, ChevronDown } from 'lucide-react';
 import { Controller } from 'react-hook-form';
 import TableDocField from './TableDocField';
 import apiClient from '../../lib/api.client';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function FormField({ field, register, control, error, readOnly, autoCode }) {
   const { fieldname, label, fieldtype, is_required, options } = field;
+  const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const [linkOptions, setLinkOptions] = useState([]);
 
@@ -63,7 +65,7 @@ export default function FormField({ field, register, control, error, readOnly, a
       case 'Data':
       case 'Int':
       case 'Float':
-        const resolvedPlaceholder = (fieldname === 'code' && autoCode) ? autoCode : `Enter ${label}`;
+        const resolvedPlaceholder = (fieldname === 'code' && autoCode) ? autoCode : `${t('Enter', 'Enter')} ${t(label, label)}`;
         return (
           <input
             type={fieldtype === 'Data' ? 'text' : 'number'}
@@ -89,7 +91,7 @@ export default function FormField({ field, register, control, error, readOnly, a
               maxLength={fieldname === 'pin_hash' || fieldname === 'pin' ? 6 : undefined}
               inputMode={fieldname === 'pin_hash' || fieldname === 'pin' ? 'numeric' : undefined}
               className={`${baseInput} pr-10`}
-              placeholder={`Enter ${label}`}
+              placeholder={`${t('Enter', 'Enter')} ${t(label, label)}`}
               disabled={readOnly}
             />
             <button
@@ -108,7 +110,7 @@ export default function FormField({ field, register, control, error, readOnly, a
             {...register(fieldname)}
             rows={4}
             className={baseInput}
-            placeholder={`Enter ${label}`}
+            placeholder={`${t('Enter', 'Enter')} ${t(label, label)}`}
             disabled={readOnly}
           />
         );
@@ -121,11 +123,11 @@ export default function FormField({ field, register, control, error, readOnly, a
               className={`${baseInput} appearance-none pr-8`}
               disabled={readOnly}
             >
-              <option value="">Select {label}...</option>
+              <option value="">{t('Select', 'Select')} {t(label, label)}...</option>
               {options && (Array.isArray(options) ? options : options.split('\n')).map(opt => {
                 const optStr = typeof opt === 'string' ? opt.trim() : opt;
                 if (!optStr) return null;
-                return <option key={optStr} value={optStr}>{optStr}</option>
+                return <option key={optStr} value={optStr}>{t(optStr, optStr)}</option>
               })}
             </select>
             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-(--color-muted)">
@@ -160,9 +162,9 @@ export default function FormField({ field, register, control, error, readOnly, a
                   className={`${baseInput} appearance-none pr-8`}
                   disabled={readOnly}
                 >
-                  <option value="">Select {label}...</option>
+                  <option value="">{t('Select', 'Select')} {t(label, label)}...</option>
                   {linkOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>{t(opt.label, opt.label)}</option>
                   ))}
                 </select>
               )}
@@ -187,7 +189,7 @@ export default function FormField({ field, register, control, error, readOnly, a
                    const checkbox = e.currentTarget.previousSibling;
                    checkbox.click();
                 }
-            }}>{label}</span>
+            }}>{t(label, label)}</span>
           </div>
         );
 
@@ -197,7 +199,7 @@ export default function FormField({ field, register, control, error, readOnly, a
             type="text"
             {...register(fieldname)}
             className={baseInput}
-            placeholder={`Enter ${label}`}
+            placeholder={`${t('Enter', 'Enter')} ${t(label, label)}`}
             disabled={readOnly}
           />
         );
@@ -208,7 +210,7 @@ export default function FormField({ field, register, control, error, readOnly, a
     <div className="flex flex-col">
       {fieldtype !== 'Check' && (
         <label className="mb-1 text-sm font-medium text-(--color-text)">
-          {label} {is_required ? <span className="text-red-500">*</span> : ''}
+          {t(label, label)} {is_required ? <span className="text-red-500">*</span> : ''}
         </label>
       )}
 

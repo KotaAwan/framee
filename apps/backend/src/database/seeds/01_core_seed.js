@@ -28,7 +28,9 @@ export async function seed(knex) {
   // 2. Module
   await knex('sys_module').insert([
     { id: 1, code: 'MODU-2607-0001', name: 'System', slug: 'system', icon: 'Settings', is_deleted: false, status: 'Saved' },
-    { id: 2, code: 'MODU-2607-0002', name: 'Core', slug: 'core', icon: 'Database', is_deleted: false, status: 'Saved' }
+    { id: 2, code: 'MODU-2607-0002', name: 'Core', slug: 'core', icon: 'Database', is_deleted: false, status: 'Saved' },
+    { id: 3, code: 'MODU-2607-0003', name: 'Dashboard', slug: 'dashboard', icon: 'LayoutDashboard', is_deleted: false, status: 'Saved' },
+    { id: 4, code: 'MODU-2607-0004', name: 'Settings', slug: 'settings', icon: 'Settings', is_deleted: false, status: 'Saved' }
   ]);
 
   // 3. Workflow States (sys_state)
@@ -60,12 +62,14 @@ export async function seed(knex) {
     { id: 7, code: 'DOCT-2607-0007', name: 'Permission', slug: 'sys_permission', table_name: 'sys_permission', module_id: 1, icon: 'Lock', auto_code: 'PERM-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
     { id: 8, code: 'DOCT-2607-0008', name: 'User', slug: 'sys_user', table_name: 'sys_user', module_id: 1, icon: 'Users', auto_code: 'USER-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
     { id: 9, code: 'DOCT-2607-0009', name: 'User Role', slug: 'sys_user_role', table_name: 'sys_user_role', module_id: 1, icon: 'UserCheck', auto_code: 'UROL-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 10, code: 'DOCT-2607-0010', name: 'Settings', slug: 'sys_settings', table_name: 'sys_settings', module_id: 1, icon: 'Settings', auto_code: 'SETI-.YY..MM.-.XXXX', is_single: true, is_deleted: false, status: 'Saved' },
-    { id: 11, code: 'DOCT-2607-0011', name: 'State', slug: 'sys_state', table_name: 'sys_state', module_id: 1, icon: 'GitCommit', auto_code: 'STAT-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 12, code: 'DOCT-2607-0012', name: 'Action', slug: 'sys_action', table_name: 'sys_action', module_id: 1, icon: 'Play', auto_code: 'ACTI-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 13, code: 'DOCT-2607-0013', name: 'Workflow', slug: 'sys_workflow', table_name: 'sys_workflow', module_id: 1, icon: 'GitMerge', auto_code: 'WKFW-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 10, code: 'DOCT-2607-0010', name: 'Company', slug: 'sys_company', table_name: 'sys_company', module_id: 4, icon: 'Building', auto_code: 'COMP-.YY..MM.-.XXXX', is_single: true, is_deleted: false, status: 'Saved' },
+    { id: 11, code: 'DOCT-2607-0011', name: 'State', slug: 'sys_state', table_name: 'sys_state', module_id: 4, icon: 'GitCommit', auto_code: 'STAT-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 12, code: 'DOCT-2607-0012', name: 'Action', slug: 'sys_action', table_name: 'sys_action', module_id: 4, icon: 'Play', auto_code: 'ACTI-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 13, code: 'DOCT-2607-0013', name: 'Workflow', slug: 'sys_workflow', table_name: 'sys_workflow', module_id: 4, icon: 'GitMerge', auto_code: 'WKFW-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
     { id: 14, code: 'DOCT-2607-0014', name: 'Print', slug: 'sys_print', table_name: 'sys_print', module_id: 1, icon: 'Printer', auto_code: 'PRIN-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 15, code: 'DOCT-2607-0015', name: 'Menu', slug: 'sys_menu', table_name: 'sys_menu', module_id: 1, icon: 'Menu', auto_code: 'MENU-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' }
+    { id: 15, code: 'DOCT-2607-0015', name: 'Menu', slug: 'sys_menu', table_name: 'sys_menu', module_id: 1, icon: 'Menu', auto_code: 'MENU-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 16, code: 'DOCT-2607-0016', name: 'Welcome', slug: 'sys_welcome', table_name: 'sys_welcome', module_id: 3, icon: 'Home', auto_code: 'WELC-.YY..MM.-.XXXX', is_single: true, is_deleted: false, status: 'Saved' },
+    { id: 17, code: 'DOCT-2607-0017', name: 'Currency', slug: 'sys_currency', table_name: 'sys_currency', module_id: 4, icon: 'DollarSign', auto_code: 'CURR-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' }
   ];
   await knex('sys_doctype').insert(doctypes);
 
@@ -168,27 +172,31 @@ export async function seed(knex) {
     { user_id: 1, role_id: 1, is_deleted: false, status: 'Saved' }
   ]);
 
-  await knex('sys_permission').insert([
-    {
-      id: 1,
-      code: 'PERM-2607-0001',
-      name: 'Admin - User',
-      role_id: 1,
-      doctype: 'sys_user',
-      can_read: true,
-      can_write: true,
-      can_create: true,
-      can_delete: true,
-      can_submit: true,
-      can_cancel: true,
-      can_import: true,
-      can_export: true,
-      can_print: true,
-      can_share: true,
-      is_deleted: false,
-      status: 'Saved'
-    }
-  ]);
+  const permissionDoctypes = [
+    'sys_language', 'sys_translation', 'sys_module', 'sys_doctype', 
+    'sys_role', 'sys_user', 'sys_user_role', 'sys_permission', 'sys_welcome',
+    'sys_company', 'sys_state', 'sys_action', 'sys_workflow', 'sys_currency'
+  ];
+  const permissionsData = permissionDoctypes.map((dt, index) => ({
+    id: index + 1,
+    code: `PERM-2607-${String(index + 1).padStart(4, '0')}`,
+    name: `Admin - ${dt}`,
+    role_id: 1,
+    doctype: dt,
+    can_read: true,
+    can_update: true,
+    can_create: true,
+    can_delete: true,
+    can_lock: true,
+    can_unlock: true,
+    can_import: true,
+    can_export: true,
+    can_print: true,
+    can_share: true,
+    is_deleted: false,
+    status: 'Saved'
+  }));
+  await knex('sys_permission').insert(permissionsData);
 
   // 9. Menu & Workspace
   await knex('sys_menu').insert([
@@ -356,11 +364,11 @@ export async function seed(knex) {
     { fieldname: 'role_id', label: 'Role', fieldtype: 'Link', options: 'sys_role', reqd: true },
     { fieldname: 'doctype', label: 'Doctype', fieldtype: 'Link', options: 'sys_doctype', reqd: true },
     { fieldname: 'can_read', label: 'Can Read', fieldtype: 'Check', in_list: false },
-    { fieldname: 'can_write', label: 'Can Write', fieldtype: 'Check', in_list: false },
+    { fieldname: 'can_update', label: 'Can Update', fieldtype: 'Check', in_list: false },
     { fieldname: 'can_create', label: 'Can Create', fieldtype: 'Check', in_list: false },
     { fieldname: 'can_delete', label: 'Can Delete', fieldtype: 'Check', in_list: false },
-    { fieldname: 'can_submit', label: 'Can Submit', fieldtype: 'Check', in_list: false },
-    { fieldname: 'can_cancel', label: 'Can Cancel', fieldtype: 'Check', in_list: false },
+    { fieldname: 'can_lock', label: 'Can Lock', fieldtype: 'Check', in_list: false },
+    { fieldname: 'can_unlock', label: 'Can Unlock', fieldtype: 'Check', in_list: false },
     { fieldname: 'can_import', label: 'Can Import', fieldtype: 'Check', in_list: false },
     { fieldname: 'can_export', label: 'Can Export', fieldtype: 'Check', in_list: false },
     { fieldname: 'can_print', label: 'Can Print', fieldtype: 'Check', in_list: false },

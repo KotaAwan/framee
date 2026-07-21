@@ -42,11 +42,11 @@ export async function up(knex) {
     table.integer('role_id').unsigned().nullable();
     table.string('doctype', 100).notNullable(); // string because it might refer to table_name or doctype name, user specified string/int
     table.boolean('can_read').defaultTo(false);
-    table.boolean('can_write').defaultTo(false);
+    table.boolean('can_update').defaultTo(false);
     table.boolean('can_create').defaultTo(false);
     table.boolean('can_delete').defaultTo(false);
-    table.boolean('can_submit').defaultTo(false);
-    table.boolean('can_cancel').defaultTo(false);
+    table.boolean('can_lock').defaultTo(false);
+    table.boolean('can_unlock').defaultTo(false);
     table.boolean('can_import').defaultTo(false);
     table.boolean('can_export').defaultTo(false);
     table.boolean('can_print').defaultTo(false);

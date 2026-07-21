@@ -83,6 +83,10 @@ export async function createServer() {
   WorkflowEngine.init();
   await QueueEngine.init();
 
+  // Initialize Listeners
+  const { initializeTranslationListener } = await import('./listeners/translation.listener.js');
+  initializeTranslationListener();
+
   // API Routes
   app.get('/health', (req, res) => res.json({ status: 'OK' }));
   app.use('/api/v1/doc', docRoutes);

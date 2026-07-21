@@ -5,8 +5,10 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import apiClient from '../../lib/api.client';
 import Icon from '../ui/Icon';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function MenuTree({ sidebarOpen, setSidebarOpen }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [modules, setModules] = useState([]);
   const [openGroups, setOpenGroups] = useState({ System: true });
@@ -46,26 +48,7 @@ export default function MenuTree({ sidebarOpen, setSidebarOpen }) {
 
   return (
     <ul className="space-y-2 px-2">
-      {/* Static Dashboard Link */}
-      <li className="flex flex-col mb-4">
-        <Link
-          href="/dashboard"
-          onClick={(e) => {
-            if (router.pathname === '/dashboard' || router.pathname === '/') {
-              e.preventDefault();
-            }
-          }}
-          className={clsx(
-            "flex items-center gap-3 px-4 py-3 text-sm font-bold tracking-wider uppercase transition-colors w-full rounded-md",
-            router.pathname === '/dashboard' || router.pathname === '/'
-              ? "text-white bg-(--color-primary) shadow-sm"
-              : "text-(--color-sidebar-text) hover:text-white hover:bg-(--color-sidebar-hover)"
-          )}
-        >
-          <Icon name="Home" size={16} className="shrink-0" />
-          {sidebarOpen && <span>Dashboard</span>}
-        </Link>
-      </li>
+
 
       {modules.filter(group => group.shortcuts && group.shortcuts.length > 0).map((group) => {
         const isOpen = openGroups[group.name];
@@ -82,7 +65,7 @@ export default function MenuTree({ sidebarOpen, setSidebarOpen }) {
             >
               <div className="flex items-center gap-3">
                 <Icon name={groupIconName} size={16} className="shrink-0" />
-                {sidebarOpen && <span>{group.name}</span>}
+                {sidebarOpen && <span>{t(group.name, group.name)}</span>}
               </div>
               {sidebarOpen && (
                 isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />
@@ -118,7 +101,7 @@ export default function MenuTree({ sidebarOpen, setSidebarOpen }) {
                       >
                         {/* Dynamic Shortcut Icon */}
                         <Icon name={shortcut.icon} size={14} fallback="Database" className={isActive ? "text-(--color-primary)" : "text-gray-500"} />
-                        <span>{shortcut.name}</span>
+                        <span>{t(shortcut.name, shortcut.name)}</span>
                       </Link>
                     </li>
                   );

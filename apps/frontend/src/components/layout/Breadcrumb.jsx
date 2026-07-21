@@ -3,9 +3,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ChevronRight, Home } from 'lucide-react';
 import Icon from '../ui/Icon';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function Breadcrumb({ mode }) {
   const router = useRouter();
+  const { t } = useTranslation();
 
   // Parse path for breadcrumb segments
   const pathSegments = router.asPath.split('?')[0].split('/').filter(p => p);
@@ -77,7 +79,7 @@ export default function Breadcrumb({ mode }) {
             <span className="mx-2 text-(--color-muted)">/</span>
             {isLast ? (
               <span className="text-(--color-text) font-semibold flex items-center gap-1.5">
-                {segment.label}
+                {t(segment.label, segment.label)}
               </span>
             ) : (
               <Link 
@@ -89,7 +91,7 @@ export default function Breadcrumb({ mode }) {
                   }
                 }}
               >
-                {segment.label}
+                {t(segment.label, segment.label)}
               </Link>
             )}
           </React.Fragment>

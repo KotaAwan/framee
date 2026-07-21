@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Activity } from 'lucide-react';
 import apiClient from '../../lib/api.client';
+import { useTranslation } from '@/hooks/useTranslation';
 
 // ── Component #5: ListActivity (The actual list inside the card that fades in on reload)
 function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, hasMore, setPage, getActionStyle, formatTime }) {
+  const { t } = useTranslation();
   return (
     <>
       <style>{`
@@ -53,7 +55,7 @@ function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, 
 
                 {/* Content */}
                 <div className="flex-1 min-w-0 text-sm flex flex-wrap items-center gap-1">
-                  <span className="font-semibold text-(--color-text)">{log.user_name || 'System'}</span>
+                  <span className="font-semibold text-(--color-text)">{log.user_name || t('System', 'System')}</span>
                   <span>
                     <span className={`font-semibold ${actionStyle.color}`}>{actionStyle.text}</span>
                     {log.doc_id && <span className="text-(--color-muted)">, ID {log.doc_id}</span>}
@@ -82,7 +84,7 @@ function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, 
             disabled={loading}
             className="text-sm font-medium text-(--color-primary) hover:text-(--color-primary-hover) disabled:opacity-50 transition-colors px-4 py-2 rounded-md hover:bg-(--color-surface-hover)"
           >
-            {loading ? 'Loading...' : 'Load More...'}
+            {loading ? 'Loading...' : t('LoadMore', 'Load More...')}
           </button>
         </div>
       )}
@@ -92,6 +94,7 @@ function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, 
 
 // ── Component #4: ActivityTimeline (The card container, wrapper, and data orchestrator)
 export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0, onLogsLoaded }) {
+  const { t } = useTranslation();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -152,20 +155,20 @@ export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0
 
   const getActionStyle = (action) => {
     switch (action?.toUpperCase()) {
-      case 'CREATED':    return { text: 'Created',  color: 'text-green-600' };
-      case 'UPDATED':    return { text: 'Updated',  color: 'text-blue-600' };
-      case 'DELETED':    return { text: 'Deleted',  color: 'text-red-600' };
-      case 'LOCKED':     return { text: 'Locked',   color: 'text-orange-500' };
-      case 'UNLOCKED':   return { text: 'Unlocked', color: 'text-purple-600' };
-      case 'SUBMITTED':  return { text: 'Submitted',color: 'text-teal-600' };
-      case 'CANCELLED':  return { text: 'Cancelled',color: 'text-red-500' };
+      case 'CREATED':    return { text: t('Created', 'Created'),  color: 'text-green-600' };
+      case 'UPDATED':    return { text: t('Updated', 'Updated'),  color: 'text-blue-600' };
+      case 'DELETED':    return { text: t('Deleted', 'Deleted'),  color: 'text-red-600' };
+      case 'LOCKED':     return { text: t('Locked', 'Locked'),   color: 'text-orange-500' };
+      case 'UNLOCKED':   return { text: t('Unlocked', 'Unlocked'), color: 'text-purple-600' };
+      case 'SUBMITTED':  return { text: t('Submitted', 'Submitted'),color: 'text-teal-600' };
+      case 'CANCELLED':  return { text: t('Cancelled', 'Cancelled'),color: 'text-red-500' };
       case 'LIKE':
-      case 'LIKED':       return { text: 'Liked',    color: 'text-pink-500' };
+      case 'LIKED':       return { text: t('Liked', 'Liked'),    color: 'text-pink-500' };
       case 'UNLIKE':
-      case 'UNLIKED':     return { text: 'Unliked',  color: 'text-gray-400' };
+      case 'UNLIKED':     return { text: t('Unliked', 'Unliked'),  color: 'text-gray-400' };
       case 'COMMENT':
-      case 'COMMENTED':    return { text: 'Commented',color: 'text-indigo-500' };
-      default:           return { text: action,     color: 'text-gray-500' };
+      case 'COMMENTED':    return { text: t('Commented', 'Commented'),color: 'text-indigo-500' };
+      default:           return { text: t(action, action),     color: 'text-gray-500' };
     }
   };
 
@@ -183,7 +186,7 @@ export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0
       {/* Header (Component #4) */}
       <div className="flex items-center gap-2 px-5 py-3 border-b border-(--color-border)">
         <Activity size={16} className="text-blue-500" />
-        <span className="font-semibold text-sm text-(--color-text)">Activity Timeline</span>
+        <span className="font-semibold text-sm text-(--color-text)">{t('Activity Timeline', 'Activity Timeline')}</span>
       </div>
 
       {/* Component #5: ListActivity */}

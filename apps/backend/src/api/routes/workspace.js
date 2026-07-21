@@ -26,63 +26,51 @@ router.get('/', authMiddleware, async (req, res, next) => {
       return res.json({ success: true, data: [] });
     }
 
-    // 2. Get workspaces (menu assignments) for these roles
-    const workspaces = await knex('sys_workspace')
+    // 2. Get Permissions for these roles that allow reading
+    const permissions = await knex('sys_permission')
       .whereIn('role_id', roleIds)
-      .where({ is_deleted: false, status: 'Saved' })
-      .orderBy('sort_order', 'asc');
+      .where({ is_deleted: false, status: 'Saved', can_read: 1 })
+      .select('doctype'); // doctype is table_name
+      
+    const permittedDoctypes = [...new Set(permissions.map(p => p.doctype))];
     
-    const menuIds = [...new Set(workspaces.map(w => w.menu_id))];
-
-    if (menuIds.length === 0) {
+    if (permittedDoctypes.length === 0) {
       return res.json({ success: true, data: [] });
     }
 
-    // 3. Get menus
-    const menus = await knex('sys_menu')
-      .whereIn('id', menuIds)
-      .where({ is_deleted: false, status: 'Saved' });
-      
-    const doctypesNeeded = [...new Set(menus.map(m => m.doctype))];
-
-    // 4. Get doctypes
+    // 3. Get Doctypes
     const doctypes = await knex('sys_doctype')
-      .whereIn('table_name', doctypesNeeded)
-      .where({ is_deleted: false, status: 'Saved' });
-      
-    const doctypeMap = new Map();
-    doctypes.forEach(dt => doctypeMap.set(dt.table_name, dt));
-
-    const moduleIdsNeeded = [...new Set(doctypes.map(dt => dt.module_id))];
-
-    // 5. Get modules
-    const modules = await knex('sys_module')
-      .whereIn('id', moduleIdsNeeded)
+      .whereIn('table_name', permittedDoctypes)
       .where({ is_deleted: false, status: 'Saved' })
       .orderBy('name', 'asc');
+      
+    if (doctypes.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
 
-    // 6. Assemble
-    const enrichedMenus = menus.map(menu => {
-      const dt = doctypeMap.get(menu.doctype);
-      if (!dt) return null;
-      const ws = workspaces.find(w => w.menu_id === menu.id);
-      return {
-        id: menu.id,
-        name: menu.name,
-        doctype: dt.slug, // Target URL slug
-        icon: dt.icon,
-        module_id: dt.module_id,
-        sort_order: ws ? ws.sort_order : 999
-      };
-    }).filter(Boolean).sort((a, b) => a.sort_order - b.sort_order);
-
+    // 4. Get Modules
+    const moduleIds = [...new Set(doctypes.map(d => d.module_id))];
+    const modules = await knex('sys_module')
+      .whereIn('id', moduleIds)
+      .where({ is_deleted: false, status: 'Saved' })
+      .orderBy('name', 'asc');
+      
+    // 5. Assemble
     const result = modules.map(mod => {
+      const moduleDoctypes = doctypes.filter(dt => dt.module_id === mod.id);
       return {
         id: mod.id,
         name: mod.name,
-        slug: mod.slug, // Target URL slug
+        slug: mod.slug,
         icon: mod.icon,
-        shortcuts: enrichedMenus.filter(m => m.module_id === mod.id)
+        shortcuts: moduleDoctypes.map(dt => ({
+          id: dt.id,
+          name: dt.name,
+          doctype: dt.slug, // Target URL slug uses doctype slug
+          icon: dt.icon,
+          module_id: dt.module_id,
+          sort_order: 1 // Default sort order
+        }))
       };
     });
 

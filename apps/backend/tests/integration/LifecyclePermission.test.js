@@ -91,10 +91,10 @@ describe('Lifecycle & Permission Engine', () => {
       role_id: roleId,
       doctype: 'Invoice',
       can_read: true,
-      can_write: true,
+      can_update: true,
       can_create: true,
-      can_submit: true,
-      can_cancel: false // cannot cancel
+      can_lock: true,
+      can_unlock: false // cannot unlock
     });
 
     await db.getRawConnection()('sys_user_role').insert({

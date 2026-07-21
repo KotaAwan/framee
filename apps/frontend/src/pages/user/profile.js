@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useAuthStore } from '@/store/auth.store';
+import { useLanguageStore } from '@/store/language.store';
 import axios from 'axios';
 import apiClient from '@/lib/api.client';
-import { User, Loader2, UploadCloud } from 'lucide-react';
+import { User, LogOut, FileText, Download, UploadCloud, Loader2, AlertTriangle } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import Breadcrumb from '@/components/layout/Breadcrumb';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -13,6 +14,7 @@ import { useRef } from 'react';
 export default function Profile() {
   const { t } = useTranslation();
   const { accessToken, updateProfile } = useAuthStore();
+  const setGlobalLanguage = useLanguageStore((state) => state.setLanguage);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -44,7 +46,7 @@ export default function Profile() {
           setIdField(user.id || '');
           setCodeField(user.code || '');
           setPhone(user.phone || '');
-          setLanguage(user.language_id || 'en');
+          setLanguage(user.language_id || '1');
           setTimezone(user.timezone || 'Asia/Jakarta');
           setDateFormat(user.date_format || 'DD/MM/YYYY');
           setAvatarUrl(user.avatar_url || '');
@@ -77,8 +79,9 @@ export default function Profile() {
       });
 
       if (res.data.success) {
-        setMessage(t('profile.save_success', 'Profile updated successfully!'));
+        setMessage('success:' + t('profile.save_success', 'Profile updated successfully!'));
         updateProfile(fullName, avatarUrl);
+        setGlobalLanguage(language === '2' ? 'id' : 'en');
       }
     } catch (error) {
       console.error('Failed to update profile:', error);
@@ -129,6 +132,9 @@ export default function Profile() {
     );
   }
 
+  const isSuccessMessage = message.startsWith('success:');
+  const displayMessage = isSuccessMessage ? message.replace('success:', '') : message;
+
   return (
     <>
       <Head>
@@ -159,25 +165,27 @@ export default function Profile() {
             disabled={isSaving}
             className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
           >
-            {isSaving ? 'Updating...' : t('update', 'Update')}
+            {isSaving ? t('profile.update_ing', 'Updating...') : t('profile.update', 'Update')}
           </button>
         </div>
+
+        {message && (
+          <div className={`p-4 mb-6 rounded-lg text-sm font-medium shadow-sm animate-in fade-in zoom-in duration-300 flex items-center gap-2 ${isSuccessMessage ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+            {!isSuccessMessage && <AlertTriangle size={18} className="text-white" />}
+            <div className="whitespace-pre-line">{displayMessage}</div>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden">
           <div className="px-5 pt-4 pb-3 border-b border-(--color-border) bg-(--color-section-header-bg) flex items-center justify-between">
-            <h3 className="font-semibold text-(--color-text) text-base">General</h3>
+            <h3 className="font-semibold text-(--color-text) text-base">{t('profile.general', 'General')}</h3>
             <span className="text-sm font-semibold text-(--color-text)">
-              ID : {idField}
+              {t('profile.id', 'ID')} : {idField}
             </span>
           </div>
           
           <div className="px-5 pt-5 pb-8">
-            {message && (
-              <div className={`p-4 mb-6 rounded-md text-sm font-medium ${message.includes('success') ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                {message}
-              </div>
-            )}
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
               {/* Avatar Section */}
@@ -279,8 +287,8 @@ export default function Profile() {
                     onChange={(e) => setLanguage(e.target.value)}
                     className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-primary) text-(--color-text)"
                   >
-                    <option value="en">English (US)</option>
-                    <option value="id">Bahasa Indonesia</option>
+                    <option value="1">English (US)</option>
+                    <option value="2">Bahasa Indonesia</option>
                   </select>
                 </div>
 

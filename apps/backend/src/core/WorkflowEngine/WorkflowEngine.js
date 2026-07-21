@@ -200,12 +200,11 @@ class WorkflowEngine {
         .where({ id: parsedId })
         .update({ status: nextState });
 
-      // 3. Insert history to _logs (skip duplicate logs for auto-saved/auto-updated system transitions)
       if (tableName !== 'sys_docfield' && comment !== 'Auto-saved' && comment !== 'Auto-updated') {
         await trx(`${tableName}_logs`).insert({
           doc_id: parsedId,
           status: transition.log_status || nextState,
-          content: comment || doc.name || String(parsedId),
+          content: comment || null,
           created_by: user.id,
           created_at: new Date()
         });

@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-table';
 import { Eye, Edit, Trash2, Heart, MessageSquare, ChevronLeft, ChevronRight, Printer, Unlock, Lock, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { useRouter } from 'next/router';
+import { useTranslation } from '@/hooks/useTranslation';
 import QuickViewModal from './QuickViewModal';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -15,6 +16,7 @@ export default function DataTable({
   columns,
   loading,
   doctype,
+  meta,
   module,
   page,
   pageSize,
@@ -28,6 +30,7 @@ export default function DataTable({
   onSort
 }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [viewRecordId, setViewRecordId] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
@@ -103,8 +106,8 @@ export default function DataTable({
         const isDraft = status === 'Draft';
         const isNew = status === 'New';
 
-        // Check if print is supported (we'd check doctype options, but standard fallback is true or button action)
-        const isPrintable = true; // Fallback for standard doctypes
+        // Print visibility relies solely on user's sys_permission.can_print
+        const isPrintable = true; // TODO: Implement userPermissions?.can_print check here
 
         return (
           <div className="flex items-center justify-start gap-3 text-(--color-muted)">
@@ -112,7 +115,7 @@ export default function DataTable({
             {isSaved && (
               <>
                 {/* buttonLock hijau: click -> Action "Unlock" -> state "Draft" (log Unlocked) */}
-                <button title="Unlock" className="text-green-600 hover:text-green-700 transition-colors" onClick={() => {
+                <button title={t('Unlock', 'Unlock')} className="text-green-600 hover:text-green-700 transition-colors" onClick={() => {
                   setConfirmModal({
                     isOpen: true,
                     title: 'Unlock Record',
@@ -122,8 +125,7 @@ export default function DataTable({
                       try {
                         const apiClient = (await import('../../lib/api.client')).default;
                         await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/workflow/transition`, {
-                          action: 'Unlock',
-                          comment: 'Unlocked from list view'
+                          action: 'Unlock'
                         });
                         if (refreshData) {
                           setTimeout(() => refreshData(), 200);
@@ -139,13 +141,13 @@ export default function DataTable({
                 </button>
 
                 {/* iconEye for View */}
-                <button title="View" className="hover:text-(--color-primary) transition-colors" onClick={() => setViewRecordId(recordId)}>
+                <button title={t('View', 'View')} className="hover:text-(--color-primary) transition-colors" onClick={() => setViewRecordId(recordId)}>
                   <Eye size={16} />
                 </button>
 
                 {/* iconPrint for print format */}
                 {isPrintable && (
-                  <button title="Print" className="hover:text-purple-600 transition-colors" onClick={async () => {
+                  <button title={t('Print', 'Print')} className="hover:text-purple-600 transition-colors" onClick={async () => {
                     try {
                       const apiClient = (await import('../../lib/api.client')).default;
                       const res = await apiClient.get(`/api/v1/doc/${doctype}/${recordId}/print`, { responseType: 'text' });
@@ -169,7 +171,7 @@ export default function DataTable({
             {isDraft && (
               <>
                 {/* buttonUnLock merah: click -> Action "Lock" -> state "Saved" (log Locked) */}
-                <button title="Lock" className="text-red-600 hover:text-red-700 transition-colors" onClick={() => {
+                <button title={t('Lock', 'Lock')} className="text-red-600 hover:text-red-700 transition-colors" onClick={() => {
                   setConfirmModal({
                     isOpen: true,
                     title: 'Lock Record',
@@ -179,8 +181,7 @@ export default function DataTable({
                       try {
                         const apiClient = (await import('../../lib/api.client')).default;
                         await apiClient.post(`/api/v1/doc/${doctype}/${recordId}/workflow/transition`, {
-                          action: 'Lock',
-                          comment: 'Locked from list view'
+                          action: 'Lock'
                         });
                          if (refreshData) {
                            setTimeout(() => refreshData(), 200);
@@ -196,7 +197,7 @@ export default function DataTable({
                 </button>
 
                 {/* iconEdit for Form Edit */}
-                <button title="Edit" className="text-blue-600 hover:text-blue-700 transition-colors" onClick={() => router.push(`/${module || 'doctype'}/${doctype}/${recordId}`)}>
+                <button title={t('Edit', 'Edit')} className="text-blue-600 hover:text-blue-700 transition-colors" onClick={() => router.push(`/${module || 'doctype'}/${doctype}/${recordId}`)}>
                   <Edit size={16} />
                 </button>
 
@@ -401,11 +402,11 @@ export default function DataTable({
                 <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
               </div>
             </div>
-            <span>Showing {Math.min(data.length, pageSize)} of {totalRecords} rows</span>
+            <span>{t('showing', 'Showing')} {Math.min(data.length, pageSize)} {t('of', 'of')} {totalRecords} {t('rows', 'rows')}</span>
           </div>
 
           <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-            <span>Showing {page} of {Math.max(1, Math.ceil(totalRecords / pageSize))} pages</span>
+            <span>{t('page', 'Page')} {page} {t('of', 'of')} {Math.max(1, Math.ceil(totalRecords / pageSize))} {t('pages', 'pages')}</span>
             <div className="flex items-center gap-1">
               <button
                 className="p-1.5 border border-(--color-border) rounded bg-transparent text-(--color-text) transition-colors disabled:opacity-30 disabled:bg-(--color-surface-hover) enabled:hover:bg-(--color-primary) enabled:hover:text-white enabled:hover:border-(--color-primary)"
