@@ -4,7 +4,7 @@ import {
   getCoreRowModel,
   flexRender,
 } from '@tanstack/react-table';
-import { Eye, Edit, Trash2, Heart, MessageSquare, ChevronLeft, ChevronRight, Printer, Unlock, Lock } from 'lucide-react';
+import { Eye, Edit, Trash2, Heart, MessageSquare, ChevronLeft, ChevronRight, Printer, Unlock, Lock, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { useRouter } from 'next/router';
 import QuickViewModal from './QuickViewModal';
 import { Modal } from '../ui/Modal';
@@ -23,7 +23,9 @@ export default function DataTable({
   onPageSizeChange,
   rowSelection = {},
   setRowSelection = () => { },
-  refreshData
+  refreshData,
+  sortConfig,
+  onSort
 }) {
   const router = useRouter();
   const [viewRecordId, setViewRecordId] = useState(null);
@@ -58,10 +60,25 @@ export default function DataTable({
     columns.forEach(col => {
       const accessorKey = typeof col === 'string' ? col : col.accessorKey;
       const headerText = typeof col === 'string' ? col.replace(/_/g, ' ').toUpperCase() : col.header;
-      
+      const isNumeric = ['Int', 'Float', 'Currency'].includes(col.type) || accessorKey === 'id';
+      const isRightAligned = isNumeric;
+
       cols.push({
         accessorKey,
-        header: headerText,
+        header: () => (
+          <div 
+            className={`flex items-center gap-1.5 cursor-pointer select-none group ${isRightAligned ? 'justify-end' : 'justify-start'}`}
+            onClick={() => onSort && onSort(accessorKey)}
+          >
+            {sortConfig?.key === accessorKey ? (
+              sortConfig.direction === 'asc' ? <ArrowUp size={14} className="text-(--color-primary) shrink-0" /> : <ArrowDown size={14} className="text-(--color-primary) shrink-0" />
+            ) : (
+              <ArrowUpDown size={14} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            )}
+            <span>{headerText}</span>
+          </div>
+        ),
+        align: isRightAligned ? 'right' : 'left',
         cell: info => {
           const val = info.getValue();
           if (col.type === 'Check') {
@@ -277,13 +294,10 @@ export default function DataTable({
         onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
         title={confirmModal.title}
         footer={
-          <>
-            <Button variant="outline" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>Cancel</Button>
-            <Button onClick={confirmModal.onConfirm} variant="primary">Confirm</Button>
-          </>
+          <Button onClick={confirmModal.onConfirm} variant="primary">Confirm</Button>
         }
       >
-        <p className="text-sm text-slate-600 dark:text-slate-300">{confirmModal.message}</p>
+        <p className="text-sm text-(--color-text)">{confirmModal.message}</p>
       </Modal>
 
       <div className="w-full flex flex-col">
@@ -307,10 +321,12 @@ export default function DataTable({
                     i += 2; // skip both actions and socials
                   } else {
                     const isCheckbox = header.column.id === 'select';
+                    const isId = header.column.id === 'id';
+                    const alignmentClass = header.column.columnDef.align === 'right' ? 'text-right' : 'text-left';
                     renderedHeaders.push(
                       <th
                         key={header.id}
-                        className={`px-3 py-3 font-medium${isCheckbox ? ' w-8' : ''}`}
+                        className={`px-3 py-3 font-medium ${alignmentClass}${isCheckbox ? ' w-8' : ''}${isId ? ' w-12' : ''}`}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                       </th>
@@ -341,15 +357,19 @@ export default function DataTable({
                       const isActions = cell.column.id === 'actions';
                       const isSocials = cell.column.id === 'socials';
                       const isCheckbox = cell.column.id === 'select';
+                      const isId = cell.column.id === 'id';
+                      const alignmentClass = cell.column.columnDef.align === 'right' ? 'text-right' : 'text-left';
                       return (
                         <td
                           key={cell.id}
                           className={
                             isCheckbox
                               ? 'px-3 py-3 w-8'
-                              : isActions || isSocials
-                                ? 'px-3 py-3 whitespace-nowrap w-px'
-                                : 'px-3 py-3 truncate max-w-[240px]'
+                              : isId
+                                ? `px-3 py-3 w-12 text-right`
+                                : isActions || isSocials
+                                  ? 'px-3 py-3 whitespace-nowrap w-px'
+                                  : `px-3 py-3 truncate max-w-[240px] ${alignmentClass}`
                           }
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}

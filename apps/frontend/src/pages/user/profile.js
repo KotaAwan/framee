@@ -3,14 +3,16 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useAuthStore } from '@/store/auth.store';
 import axios from 'axios';
+import apiClient from '@/lib/api.client';
 import { User, Loader2, UploadCloud } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
+import Breadcrumb from '@/components/layout/Breadcrumb';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useRef } from 'react';
 
 export default function Profile() {
   const { t } = useTranslation();
-  const { token, updateProfile } = useAuthStore();
+  const { accessToken, updateProfile } = useAuthStore();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -20,24 +22,34 @@ export default function Profile() {
   // Form State
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [idField, setIdField] = useState('');
+  const [codeField, setCodeField] = useState('');
+  const [phone, setPhone] = useState('');
+  const [language, setLanguage] = useState('');
+  const [timezone, setTimezone] = useState('Asia/Jakarta');
+  const [dateFormat, setDateFormat] = useState('DD/MM/YYYY');
   const [avatarUrl, setAvatarUrl] = useState('');
 
   useEffect(() => {
-    if (!token) return;
+    if (!accessToken) return;
 
     const fetchProfile = async () => {
       try {
-        const res = await axios.get('http://localhost:3001/api/v1/user/me', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await apiClient.get('/api/v1/user/me');
         
         if (res.data.success) {
           const user = res.data.data;
-          setFullName(user.full_name || '');
+          setFullName(user.name || user.full_name || '');
           setEmail(user.email || '');
+          setIdField(user.id || '');
+          setCodeField(user.code || '');
+          setPhone(user.phone || '');
+          setLanguage(user.language_id || 'en');
+          setTimezone(user.timezone || 'Asia/Jakarta');
+          setDateFormat(user.date_format || 'DD/MM/YYYY');
           setAvatarUrl(user.avatar_url || '');
           // Sync with store just in case
-          updateProfile(user.full_name, user.avatar_url);
+          updateProfile(user.name || user.full_name, user.avatar_url);
         }
       } catch (error) {
         console.error('Failed to fetch profile:', error);
@@ -47,7 +59,7 @@ export default function Profile() {
     };
 
     fetchProfile();
-  }, [token, updateProfile]);
+  }, [accessToken, updateProfile]);
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
@@ -55,11 +67,13 @@ export default function Profile() {
     setMessage('');
 
     try {
-      const res = await axios.put('http://localhost:3001/api/v1/user/me', {
-        full_name: fullName,
+      const res = await apiClient.put('/api/v1/user/me', {
+        name: fullName,
+        phone,
+        language_id: language,
+        timezone,
+        date_format: dateFormat,
         avatar_url: avatarUrl
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
 
       if (res.data.success) {
@@ -87,9 +101,8 @@ export default function Profile() {
     formData.append('avatar', file);
 
     try {
-      const res = await axios.post('http://localhost:3001/api/v1/user/avatar', formData, {
+      const res = await apiClient.post('/api/v1/user/avatar', formData, {
         headers: { 
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'
         }
       });
@@ -126,32 +139,52 @@ export default function Profile() {
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="text-blue-600 dark:text-blue-500">
+            <div className="text-(--color-primary)">
               <User className="h-6 w-6" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            <h1 className="text-2xl font-bold tracking-tight text-(--color-text)">
               {t('profile.title', 'User Profile')}
             </h1>
           </div>
-          <div className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
-            <User className="h-4 w-4" /> / {t('user', 'User')} / <span className="text-slate-900 dark:text-slate-100">{t('profile', 'Profile')}</span>
+          <div className="flex items-center gap-4">
+            <Breadcrumb items={[{ label: t('user', 'User'), href: '#' }, { label: t('profile', 'Profile') }]} />
           </div>
         </div>
 
+        {/* Top Action Bar */}
+        <div className="flex justify-end mb-4">
+          <button
+            type="button"
+            onClick={handleSaveProfile}
+            disabled={isSaving}
+            className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
+          >
+            {isSaving ? 'Updating...' : t('update', 'Update')}
+          </button>
+        </div>
+
         {/* Main Content Area */}
-        <Card>
-          <div className="p-4">
+        <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden">
+          <div className="px-5 pt-4 pb-3 border-b border-(--color-border) bg-(--color-section-header-bg) flex items-center justify-between">
+            <h3 className="font-semibold text-(--color-text) text-base">General</h3>
+            <span className="text-sm font-semibold text-(--color-text)">
+              ID : {idField}
+            </span>
+          </div>
+          
+          <div className="px-5 pt-5 pb-8">
             {message && (
-              <div className={`p-4 mb-6 rounded-md text-sm ${message.includes('success') ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+              <div className={`p-4 mb-6 rounded-md text-sm font-medium ${message.includes('success') ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
                 {message}
               </div>
             )}
 
-            <form onSubmit={handleSaveProfile} className="space-y-4 max-w-2xl">
+            <form onSubmit={handleSaveProfile} className="space-y-4">
               {/* Avatar Section */}
-              <div className="flex items-center gap-6">
+              <div className="flex justify-center mb-6">
+                <div className="flex flex-col items-center gap-4">
                 <div 
-                  className="relative w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer group"
+                  className="relative w-20 h-20 rounded-full bg-(--color-surface-hover) border border-(--color-border) overflow-hidden flex items-center justify-center shrink-0 cursor-pointer group"
                   onClick={handleAvatarClick}
                 >
                   {isUploading ? (
@@ -177,12 +210,28 @@ export default function Profile() {
                   accept="image/*"
                   onChange={handleFileChange}
                 />
+                </div>
               </div>
 
-              {/* Name & Email */}
-              <div className="space-y-4">
+              {/* Form Fields Grid */}
+              <div className="flex flex-col gap-4">
+                
+                {/* Code (Read Only) */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
+                    {t('profile.code', 'Code')}
+                  </label>
+                  <input
+                    type="text"
+                    value={codeField}
+                    disabled
+                    className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface-hover) px-3 py-1 text-sm shadow-sm text-(--color-muted) cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Full Name */}
+                <div>
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
                     {t('profile.full_name', 'Full Name')}
                   </label>
                   <input
@@ -190,34 +239,93 @@ export default function Profile() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     required
-                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-primary) text-(--color-text)"
                   />
                 </div>
+
+                {/* Email Address */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
                     {t('profile.email', 'Email Address')}
                   </label>
                   <input
                     type="email"
                     value={email}
                     disabled
-                    className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-1 text-sm shadow-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 cursor-not-allowed"
+                    className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface-hover) px-3 py-1 text-sm shadow-sm text-(--color-muted) cursor-not-allowed"
                   />
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
+                    {t('profile.phone', 'Phone')}
+                  </label>
+                  <input
+                    type="text"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-primary) text-(--color-text)"
+                  />
+                </div>
+
+                {/* Language */}
+                <div>
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
+                    {t('profile.language', 'Language')}
+                  </label>
+                  <select
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-primary) text-(--color-text)"
+                  >
+                    <option value="en">English (US)</option>
+                    <option value="id">Bahasa Indonesia</option>
+                  </select>
+                </div>
+
+                {/* Timezone */}
+                <div>
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
+                    {t('profile.timezone', 'Timezone')}
+                  </label>
+                  <select
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-primary) text-(--color-text)"
+                  >
+                    <option value="Asia/Jakarta">Asia/Jakarta</option>
+                    <option value="Asia/Singapore">Asia/Singapore</option>
+                    <option value="Asia/Kuala_Lumpur">Asia/Kuala_Lumpur</option>
+                    <option value="Asia/Tokyo">Asia/Tokyo</option>
+                    <option value="UTC">UTC</option>
+                    <option value="Europe/London">Europe/London</option>
+                    <option value="America/New_York">America/New_York</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles</option>
+                  </select>
+                </div>
+
+                {/* Date Format */}
+                <div>
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
+                    {t('profile.date_format', 'Date Format')}
+                  </label>
+                  <select
+                    value={dateFormat}
+                    onChange={(e) => setDateFormat(e.target.value)}
+                    className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-primary) text-(--color-text)"
+                  >
+                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                    <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                    <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    <option value="DD-MM-YYYY">DD-MM-YYYY</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="pt-4 mt-4 flex justify-start">
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 min-w-[100px]"
-                >
-                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('save', 'Save')}
-                </button>
-              </div>
             </form>
           </div>
-        </Card>
+        </div>
       </div>
     </>
   );

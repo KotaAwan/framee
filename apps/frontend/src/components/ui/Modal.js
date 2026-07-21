@@ -26,18 +26,22 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-20 p-4 sm:p-0">
+    <div 
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-10 sm:pt-16 p-4"
+    >
       <div 
+        onClick={(e) => e.stopPropagation()}
         className={cn(
-          "bg-white dark:bg-slate-900 rounded-lg shadow-lg w-full max-w-lg overflow-hidden flex flex-col",
+          "bg-(--color-surface) rounded-lg shadow-lg w-full max-w-lg overflow-hidden flex flex-col border border-(--color-border)",
           className
         )}
       >
-        <div className="flex justify-between items-center p-4 border-b dark:border-slate-800">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full">
+        <div className="flex justify-between items-center p-4 border-b border-(--color-border)">
+          <h2 className="text-lg font-semibold text-(--color-text)">{title}</h2>
+          <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors">
             <X className="h-4 w-4" />
-          </Button>
+          </button>
         </div>
         
         <div className="p-4 overflow-y-auto max-h-[70vh]">
@@ -45,7 +49,7 @@ export function Modal({
         </div>
         
         {footer && (
-          <div className="p-4 border-t dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex justify-end gap-2">
+          <div className="p-4 border-t border-(--color-border) bg-(--color-surface-hover)/50 flex justify-end gap-2">
             {footer}
           </div>
         )}

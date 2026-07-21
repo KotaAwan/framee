@@ -10,10 +10,6 @@ export default function App({ Component, pageProps }) {
   const publicRoutes = ['/login', '/forgot-password', '/reset-password'];
   const isPublicRoute = publicRoutes.includes(router.pathname);
 
-  // Setup default theme on client side
-  if (typeof window !== 'undefined') {
-    document.documentElement.setAttribute('data-theme', 'light');
-  }
 
   if (isPublicRoute) {
     return <Component {...pageProps} />;

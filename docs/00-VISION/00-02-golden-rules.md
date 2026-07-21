@@ -132,7 +132,7 @@ Golden Rules are not configurable by design. They are absolute constraints. The 
 |----|----------|------|
 | GR-API-01 | MUST | All API responses must follow the standard Framee response envelope: `{ success, data, meta, error }`. |
 | GR-API-02 | MUST | All APIs must require a valid JWT. Unauthenticated endpoints must be explicitly whitelisted in configuration. |
-| GR-API-03 | MUST | Tenant ID must always be resolved from JWT context, never from the request payload or query string. |
+| GR-API-03 | ~~MUST~~ | ~~Tenant ID must always be resolved from JWT context, never from the request payload or query string.~~ **[DEPRECATED — no multi-tenancy]** |
 | GR-API-04 | MUST | All list endpoints must support pagination. Returning unbounded result sets is forbidden. |
 | GR-API-05 | MUST | API versioning is mandatory. Breaking changes require a new version namespace (e.g., `/api/v2/`). |
 | GR-API-06 | SHOULD | All endpoints must return appropriate HTTP status codes. Using `200 OK` for errors is forbidden. |
@@ -142,12 +142,12 @@ Golden Rules are not configurable by design. They are absolute constraints. The 
 
 | ID | Severity | Rule |
 |----|----------|------|
-| GR-DB-01 | MUST | Every table must have a `tenant_id` column. No shared tables across tenants are permitted. |
-| GR-DB-02 | MUST | Primary keys must be UUID v4 (VARCHAR 36). Auto-increment integers are forbidden for distributed compatibility. |
-| GR-DB-03 | MUST | All DELETE operations must use soft delete (`is_deleted = 1`). Hard deletes are forbidden except in explicit data purge workflows. |
+| GR-DB-01 | ~~MUST~~ | ~~Every table must have a `tenant_id` column. No shared tables across tenants are permitted.~~ **[DEPRECATED — single-tenant, no `tenant_id` required]** |
+| GR-DB-02 | MUST | Primary keys must be UUID v4 (VARCHAR 36) or auto-increment INT. |
+| GR-DB-03 | MUST | All DELETE operations must use soft delete (`status = 'Deleted'`). Hard deletes are forbidden except in explicit data purge workflows. |
 | GR-DB-04 | MUST | All queries must use parameterized statements. String interpolation in SQL is forbidden. |
 | GR-DB-05 | MUST | Every table must carry `created_at`, `updated_at`, `created_by`, and `updated_by` audit columns. |
-| GR-DB-06 | MUST | Composite index on `(tenant_id, is_deleted)` is mandatory on every table. |
+| GR-DB-06 | ~~MUST~~ | ~~Composite index on `(tenant_id, is_deleted)` is mandatory on every table.~~ **[DEPRECATED — no multi-tenant indexing]** |
 | GR-DB-07 | SHOULD | Foreign key relationships should be enforced at the application layer, not the database layer, to support horizontal scaling. |
 
 ### 6. Frontend Rules

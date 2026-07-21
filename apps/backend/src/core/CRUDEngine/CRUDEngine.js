@@ -74,16 +74,15 @@ class CRUDEngine {
   /**
    * Insert a new record.
    */
-  async insert(doctype, data, tenantId, userId) {
-    await this.lifecycleEngine.canPerform('create', doctype, tenantId, userId);
+  async insert(doctype, data, userId) {
+    await this.lifecycleEngine.canPerform('create', doctype, userId);
 
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+    const meta = await this.metaEngine.getDocType(doctype);
     
     const tableName = meta.table_name;
 
     if (meta.is_single) {
-      // Ensure only 1 record exists
-      const existing = await this.dbEngine.query(tableName, tenantId).first();
+      const existing = await this.dbEngine.query(tableName).first();
       if (existing) {
         throw new ValidationError(`A record for single doctype ${doctype} already exists.`);
       }
@@ -119,7 +118,7 @@ class CRUDEngine {
 
     const trx = await this.dbEngine.getRawConnection().transaction();
     try {
-      await this.workflowEngine.setInitialState(doctype, record, tenantId);
+      await this.workflowEngine.setInitialState(doctype, record);
       
       const [id] = await trx(tableName).insert(record);
       insertedId = id;
@@ -138,7 +137,7 @@ class CRUDEngine {
 
       for (const child of childrenData) {
         if (!child.options) throw new ValidationError(`Field ${child.fieldname} is missing 'options' (Child DocType).`);
-        const childMeta = await this.metaEngine.getDocType(child.options, tenantId);
+        const childMeta = await this.metaEngine.getDocType(child.options);
         const childTableName = childMeta.table_name;
         
         let idx = 0;
@@ -176,11 +175,10 @@ class CRUDEngine {
       throw this._parseDatabaseError(err, meta);
     }
 
-    const newRecord = await this.get(doctype, insertedId, tenantId, userId);
+    const newRecord = await this.get(doctype, insertedId, userId);
     
     // Emit after_insert event
     await this.eventEngine.emit(`${doctype}.after_insert`, { doc: newRecord }, { 
-      tenant_id: tenantId, 
       user_id: userId, 
       doc_id: insertedId, 
       doctype 
@@ -192,21 +190,21 @@ class CRUDEngine {
   /**
    * Get a single record by ID.
    */
-  async get(doctype, id, tenantId, userId) {
-    await this.lifecycleEngine.canPerform('read', doctype, tenantId, userId);
+  async get(doctype, id, userId) {
+    await this.lifecycleEngine.canPerform('read', doctype, userId);
 
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
     let record;
     if (meta.is_single) {
-      record = await this.dbEngine.query(tableName, tenantId).first();
+      record = await this.dbEngine.query(tableName).first();
       // If it doesn't exist yet, return a template so frontend can render an empty form
       if (!record) {
         return { id: doctype, status: 'Saved' };
       }
     } else {
-      record = await this.dbEngine.query(tableName, tenantId)
+      record = await this.dbEngine.query(tableName)
         .where({ id })
         .first();
     }
@@ -220,10 +218,10 @@ class CRUDEngine {
     for (const field of childrenFields) {
       if (!field.options) continue;
       try {
-        const childMeta = await this.metaEngine.getDocType(field.options, tenantId);
+        const childMeta = await this.metaEngine.getDocType(field.options);
         const childTableName = childMeta.table_name;
         
-        const childRecords = await this.dbEngine.query(childTableName, tenantId)
+        const childRecords = await this.dbEngine.query(childTableName)
           .where({ parent_id: record.id, parent_field: field.fieldname, status: 'Saved' })
           .orderBy('idx', 'asc');
           
@@ -236,7 +234,7 @@ class CRUDEngine {
     // Resolve sys_state for status field
     if (record.status) {
       try {
-        const state = await this.dbEngine.query('sys_state', tenantId)
+        const state = await this.dbEngine.query('sys_state')
           .where({ id: record.status })
           .orWhere({ name: record.status })
           .first();
@@ -257,21 +255,28 @@ class CRUDEngine {
   /**
    * Get a list of records (paginated/filtered).
    */
-  async getList(doctype, filters = {}, tenantId, userId) {
-    await this.lifecycleEngine.canPerform('read', doctype, tenantId, userId);
+  async getList(doctype, filters = {}, userId) {
+    await this.lifecycleEngine.canPerform('read', doctype, userId);
 
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
-    const query = this.dbEngine.query(tableName, tenantId).whereNot('status', 'Deleted').where(function() {
+    const query = this.dbEngine.query(tableName).whereNot('status', 'Deleted').where(function() {
       this.where('is_deleted', false).orWhereNull('is_deleted');
     });
     
     const { page, pageSize, search, limit, offset, order_by, ...actualFilters } = filters;
 
-    // Apply basic equality filters
+    // Apply filters: use LIKE for Data/text fields, exact match for others (Link, Check, etc.)
+    const TEXT_TYPES = new Set(['Data', 'Text', 'Small Text', 'Long Text', 'Password', 'Read Only']);
     for (const [key, value] of Object.entries(actualFilters)) {
-      query.where(key, value);
+      const fieldMeta = meta.fields.find(f => f.fieldname === key);
+      const isTextField = !fieldMeta || TEXT_TYPES.has(fieldMeta.fieldtype);
+      if (isTextField && value) {
+        query.where(key, 'like', `%${value}%`);
+      } else {
+        query.where(key, value);
+      }
     }
 
     if (search) {
@@ -297,6 +302,12 @@ class CRUDEngine {
 
     if (_limit) query.limit(_limit);
     if (_offset) query.offset(_offset);
+    if (order_by) {
+      const [col, dir] = order_by.split(' ');
+      query.orderBy(col, dir || 'asc');
+    } else {
+      query.orderBy('id', 'desc');
+    }
     
     const records = await query;
     
@@ -308,23 +319,19 @@ class CRUDEngine {
         if (ids.length === 0) continue;
         
         try {
-          const linkedMeta = await this.metaEngine.getDocType(field.options, tenantId);
+          const docTypeName = Array.isArray(field.options) ? field.options[0] : field.options;
+          const linkedMeta = await this.metaEngine.getDocType(docTypeName);
           const linkedTableName = linkedMeta.table_name;
           const titleField = linkedMeta.title_field || 'name';
           
-          const linkedRecords = await this.dbEngine.query(linkedTableName, tenantId)
+          const linkedRecords = await this.dbEngine.query(linkedTableName)
             .whereIn('id', ids)
-            .select('*'); // Select all so we can safely check for 'code'
+            .select('*');
             
           const idToTitleMap = {};
           for (const lr of linkedRecords) {
             const title = lr[titleField] || lr.name || lr.id;
-            // Format as "CODE - TITLE" if code exists and is different from title
-            if (lr.code && lr.code !== title && titleField !== 'code') {
-              idToTitleMap[lr.id] = `${lr.code} - ${title}`;
-            } else {
-              idToTitleMap[lr.id] = title;
-            }
+            idToTitleMap[lr.id] = title;
           }
           
           for (const record of records) {
@@ -343,7 +350,7 @@ class CRUDEngine {
       const stateIds = [...new Set(records.map(r => r.status).filter(Boolean))];
       if (stateIds.length > 0) {
         try {
-          const states = await this.dbEngine.query('sys_state', tenantId)
+          const states = await this.dbEngine.query('sys_state')
             .whereIn('id', stateIds)
             .orWhereIn('name', stateIds)
             .select('id', 'name', 'style', 'is_terminal');
@@ -357,7 +364,6 @@ class CRUDEngine {
           for (const record of records) {
             if (record.status && stateMap[record.status]) {
               const st = stateMap[record.status];
-              // Keep original ID in status_id, replace status with name for backward compatibility
               record.status_id = record.status;
               record.status = st.name;
               record.status_style = st.style;
@@ -374,9 +380,6 @@ class CRUDEngine {
     if (records.length > 0) {
       const docIds = records.map(r => r.id);
       
-      const meta = await this.metaEngine.getDocType(doctype, tenantId);
-      const tableName = meta.table_name;
-      
       let auditLogs = [];
       if (tableName !== 'sys_docfield') {
         auditLogs = await this.dbEngine.getRawConnection()(`${tableName}_logs`)
@@ -391,7 +394,6 @@ class CRUDEngine {
         record.likes = Math.max(0, likes - unlikes);
         record.comments = logs.filter(l => l.status === 'Commented').length;
         
-        // Find last like/unlike by current user
         const myLogs = logs.filter(l => l.created_by === userId && (l.status === 'Liked' || l.status === 'Unliked'))
                            .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
         record.is_liked = myLogs.length > 0 && myLogs[0].status === 'Liked';
@@ -404,26 +406,25 @@ class CRUDEngine {
   /**
    * Update an existing record.
    */
-  async update(doctype, id, data, tenantId, userId) {
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+  async update(doctype, id, data, userId) {
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
     let existingDoc;
     if (meta.is_single) {
-      existingDoc = await this.dbEngine.query(tableName, tenantId).first();
+      existingDoc = await this.dbEngine.query(tableName).first();
       if (!existingDoc) {
-        // If it's a single doctype and doesn't exist, we insert it instead
-        return this.insert(doctype, data, tenantId, userId);
+        return this.insert(doctype, data, userId);
       }
     } else {
-      existingDoc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
+      existingDoc = await this.dbEngine.query(tableName).where({ id }).first();
     }
 
     if (!existingDoc || existingDoc.status === 'Deleted') {
       throw new NotFoundError(`${doctype} with ID ${id} not found.`);
     }
 
-    await this.lifecycleEngine.canPerform('update', doctype, tenantId, userId, existingDoc, data);
+    await this.lifecycleEngine.canPerform('update', doctype, userId, existingDoc, data);
 
     const parentData = { ...data };
     const childrenData = [];
@@ -456,7 +457,7 @@ class CRUDEngine {
       // 1. Copy old data to _version table
       if (tableName !== 'sys_docfield') {
         const oldData = { ...existingDoc, doc_id: existingDoc.id, backup_by: userId, backup_at: new Date() };
-        delete oldData.id; // it will be auto_increment in version table
+        delete oldData.id;
         await trx(`${tableName}_version`).insert(oldData);
       }
 
@@ -479,13 +480,8 @@ class CRUDEngine {
       // 4. Update children
       for (const child of childrenData) {
         if (!child.options) continue;
-        const childMeta = await this.metaEngine.getDocType(child.options, tenantId);
+        const childMeta = await this.metaEngine.getDocType(child.options);
         const childTableName = childMeta.table_name;
-        
-        // Find existing children to back them up?
-        // For simplicity, we just delete and re-insert, but without backing up children individually unless requested.
-        // The prompt says "table_name_version (struct sama + doc_id, copy data 1 record, before UPDATED)"
-        // It didn't explicitly say for children, but we should probably just handle parents for now as requested.
         
         await trx(childTableName).where({ parent_id: existingDoc.id, parent_field: child.fieldname }).del();
         
@@ -525,11 +521,10 @@ class CRUDEngine {
       throw this._parseDatabaseError(err, meta);
     }
 
-    const updatedRecord = await this.get(doctype, existingDoc.id, tenantId, userId);
+    const updatedRecord = await this.get(doctype, existingDoc.id, userId);
 
     // Emit after_update event
     await this.eventEngine.emit(`${doctype}.after_update`, { doc: updatedRecord, oldDoc: existingDoc, newDoc: updatedRecord }, { 
-      tenant_id: tenantId, 
       user_id: userId, 
       doc_id: existingDoc.id, 
       doctype 
@@ -541,11 +536,11 @@ class CRUDEngine {
   /**
    * Soft delete a record.
    */
-  async delete(doctype, id, tenantId, userId, reason = null) {
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+  async delete(doctype, id, userId, reason = null) {
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
-    const existingDoc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
+    const existingDoc = await this.dbEngine.query(tableName).where({ id }).first();
     if (!existingDoc || existingDoc.status === 'Deleted') {
       throw new NotFoundError(`${doctype} with ID ${id} not found.`);
     }
@@ -554,10 +549,10 @@ class CRUDEngine {
       throw new ValidationError(`Deletion of ${doctype} requires a reason.`);
     }
 
-    await this.lifecycleEngine.canPerform('delete', doctype, tenantId, userId, existingDoc);
+    await this.lifecycleEngine.canPerform('delete', doctype, userId, existingDoc);
 
     // Soft delete
-    await this.dbEngine.query(tableName, tenantId)
+    await this.dbEngine.query(tableName)
       .where({ id })
       .update({
         is_deleted: true
@@ -576,7 +571,6 @@ class CRUDEngine {
 
     // Emit after_delete event
     await this.eventEngine.emit(`${doctype}.after_delete`, { id, status: 'Deleted', delete_reason: reason }, { 
-      tenant_id: tenantId, 
       user_id: userId, 
       doc_id: id, 
       doctype 
@@ -587,18 +581,18 @@ class CRUDEngine {
 
   // --- LIFECYCLE ACTION METHODS ---
 
-  async submit(doctype, id, tenantId, userId) {
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+  async submit(doctype, id, userId) {
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
-    const doc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
+    const doc = await this.dbEngine.query(tableName).where({ id }).first();
     if (!doc || doc.status === 'Deleted') throw new NotFoundError(`${doctype} with ID ${id} not found.`);
 
-    await this.lifecycleEngine.canPerform('submit', doctype, tenantId, userId, doc);
+    await this.lifecycleEngine.canPerform('submit', doctype, userId, doc);
 
     const nextStatus = meta.lock_on_submit ? 'Locked' : 'Submitted';
 
-    await this.dbEngine.query(tableName, tenantId).where({ id }).update({
+    await this.dbEngine.query(tableName).where({ id }).update({
       status: nextStatus,
       submitted_at: new Date(),
       submitted_by: userId,
@@ -606,35 +600,33 @@ class CRUDEngine {
       updated_by: userId
     });
 
-    return this.get(doctype, id, tenantId, userId);
+    return this.get(doctype, id, userId);
   }
 
-  async cancel(doctype, id, tenantId, userId, reason = null) {
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+  async cancel(doctype, id, userId, reason = null) {
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
-    const doc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
+    const doc = await this.dbEngine.query(tableName).where({ id }).first();
     if (!doc || doc.status === 'Deleted') throw new NotFoundError(`${doctype} with ID ${id} not found.`);
 
-    await this.lifecycleEngine.canPerform('cancel', doctype, tenantId, userId, doc);
+    await this.lifecycleEngine.canPerform('cancel', doctype, userId, doc);
 
-    await this.dbEngine.query(tableName, tenantId).where({ id }).update({
+    await this.dbEngine.query(tableName).where({ id }).update({
       status: 'Cancelled'
     });
 
-    return this.get(doctype, id, tenantId, userId);
+    return this.get(doctype, id, userId);
   }
 
-  async toggleLock(doctype, id, newStatus, tenantId, userId) {
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+  async toggleLock(doctype, id, newStatus, userId) {
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
-    const doc = await this.dbEngine.query(tableName, tenantId).where({ id }).first();
+    const doc = await this.dbEngine.query(tableName).where({ id }).first();
     if (!doc || doc.status === 'Deleted') throw new NotFoundError(`${doctype} with ID ${id} not found.`);
 
-    // Require admin or specific permission? (skip for now, handled by route or logic)
-    
-    await this.dbEngine.query(tableName, tenantId).where({ id }).update({
+    await this.dbEngine.query(tableName).where({ id }).update({
       status: newStatus
     });
 
@@ -655,13 +647,12 @@ class CRUDEngine {
     const updatedDoc = { ...doc, status: newStatus };
 
     await this.eventEngine.emit(`${doctype}.${newStatus === 'Locked' ? 'locked' : 'unlocked'}`, { doc: updatedDoc }, { 
-      tenant_id: tenantId, 
       user_id: userId, 
       doc_id: id, 
       doctype 
     });
 
-    return this.get(doctype, id, tenantId, userId);
+    return this.get(doctype, id, userId);
   }
 }
 

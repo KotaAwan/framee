@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { ArrowLeft, Save, Trash2, History, Printer, FileDown, FileText, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, History, Printer, FileDown, FileText, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import apiClient from '../../lib/api.client';
 import FormField from './FormField';
 import VersionHistoryModal from './VersionHistoryModal';
@@ -30,9 +30,21 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
     schema.forEach(field => {
       let validator;
       if (['Data', 'Select', 'Link', 'Text', 'Password'].includes(field.fieldtype)) {
-        validator = z.string();
+        if (field.fieldtype === 'Link') {
+          // Link can be a string (UUID) or a number (autoincrement ID like Language)
+          validator = z.union([z.string(), z.number()]);
+        } else {
+          validator = z.string();
+        }
+
         if (field.is_required && !field.is_hidden) {
-          validator = validator.min(1, `${field.label} is required`);
+          if (field.fieldtype === 'Link') {
+            validator = validator.refine(val => val !== undefined && val !== null && val !== '', {
+              message: `${field.label} is required`
+            });
+          } else {
+            validator = validator.min(1, `${field.label} is required`);
+          }
         } else {
           validator = validator.optional().or(z.literal('').or(z.null()));
         }
@@ -393,13 +405,20 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                         }
                         return (
                         <div key={field.fieldname} className={`col-span-1 ${getColSpanClass(field.column_width)}`}>
-                          <FormField 
-                            field={field} 
-                            register={register} 
-                            control={control}
-                            error={errors[field.fieldname]} 
-                            readOnly={!isEditable}
-                          />
+                          {(() => {
+                            // Determine readOnly strictly by metadata is_read_only definition.
+                            const isFieldReadOnly = !isEditable || (field.is_read_only === 1 || field.is_read_only === true);
+                            return (
+                              <FormField 
+                                field={field} 
+                                register={register} 
+                                control={control}
+                                error={errors[field.fieldname]} 
+                                readOnly={isFieldReadOnly}
+                                autoCode={meta?.auto_code}
+                              />
+                            );
+                          })()}
                         </div>
                         );
                       })}
@@ -413,41 +432,53 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       </div>
 
       {/* Reset Password Card for sys_user Edit */}
-      {doctype === 'sys_user' && !isNew && !isModal && isEditable && (
-        <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden mt-6">
-           <div className="px-5 py-4 border-b border-(--color-border) bg-(--color-section-header-bg)">
-             <h3 className="font-semibold text-(--color-text) text-base">Security</h3>
-           </div>
-           <div className="px-5 py-6">
-             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 max-w-sm">
-                 <input 
-                   type="password" 
-                   id="new_password_input"
-                   placeholder="New Password" 
-                   className="flex-1 block w-full px-4 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) transition-all placeholder:text-(--color-input-placeholder)"
-                 />
-                 <button 
-                   type="button" 
-                   onClick={() => {
-                      const pw = document.getElementById('new_password_input').value;
-                      if (!pw) return alert('Password cannot be empty');
-                      if (window.confirm('Are you sure you want to reset the password for this user?')) {
-                        apiClient.post(`/api/v1/auth/reset-password/${recordId}`, { password: pw })
-                          .then(() => {
-                             alert('Password reset successfully');
-                             document.getElementById('new_password_input').value = '';
-                          })
-                          .catch(e => alert(e.response?.data?.message || 'Failed to reset password'));
-                      }
-                   }}
-                   className="bg-(--color-primary) text-white px-5 py-2 rounded-md font-medium text-sm hover:bg-(--color-primary-hover) transition-colors whitespace-nowrap"
-                 >
-                   Save
-                 </button>
+      {doctype === 'sys_user' && !isNew && !isModal && isEditable && (() => {
+        const [showChangePassword, setShowChangePassword] = React.useState(false);
+        return (
+          <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden mt-6">
+             <div className="px-5 py-4 border-b border-(--color-border) bg-(--color-section-header-bg)">
+               <h3 className="font-semibold text-(--color-text) text-base">Change Password</h3>
              </div>
-           </div>
-        </div>
-      )}
+             <div className="px-5 py-6">
+               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 max-w-sm">
+                   <div className="relative flex-1 w-full">
+                     <input 
+                       type={showChangePassword ? 'text' : 'password'} 
+                       id="new_password_input"
+                       placeholder="New Password" 
+                       className="w-full pl-4 pr-10 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) transition-all placeholder:text-(--color-input-placeholder)"
+                     />
+                     <button
+                       type="button"
+                       className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted) hover:text-(--color-text) focus:outline-none"
+                       onClick={() => setShowChangePassword(!showChangePassword)}
+                     >
+                       {showChangePassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                     </button>
+                   </div>
+                   <button 
+                     type="button" 
+                     onClick={() => {
+                        const pw = document.getElementById('new_password_input').value;
+                        if (!pw) return alert('Password cannot be empty');
+                        if (window.confirm('Are you sure you want to change the password for this user?')) {
+                          apiClient.post(`/api/v1/auth/reset-password/${recordId}`, { password: pw })
+                            .then(() => {
+                               alert('Password updated successfully');
+                               document.getElementById('new_password_input').value = '';
+                            })
+                            .catch(e => alert(e.response?.data?.message || 'Failed to update password'));
+                        }
+                     }}
+                     className="bg-(--color-primary) text-white px-5 py-2 rounded-md font-medium text-sm hover:bg-(--color-primary-hover) transition-colors whitespace-nowrap"
+                   >
+                     Update
+                   </button>
+               </div>
+             </div>
+          </div>
+        );
+      })()}
 
       {showVersions && (
         <VersionHistoryModal 

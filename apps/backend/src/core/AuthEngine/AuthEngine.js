@@ -89,7 +89,7 @@ class AuthEngine {
     const tokens = await this._generateTokens(user, sessionId);
     
     // Emit login event
-    EventEngine.emit('user.login', { userId: user.id, email: user.email }, { tenant_id: user.tenant_id, user_id: user.id });
+    EventEngine.emit('user.login', { userId: user.id, email: user.email }, { user_id: user.id });
 
     // Load roles
     const userRoles = await knex('sys_user_role')
@@ -104,7 +104,6 @@ class AuthEngine {
       refresh_token: tokens.refreshToken,
       user: {
         id: user.id,
-        tenantId: user.tenant_id,
         email: user.email,
         name: user.name,
         fullName: user.name, // Keep fullName for backwards compatibility in UI
@@ -197,7 +196,6 @@ class AuthEngine {
     // 1. Access Token
     const payload = {
       userId: user.id,
-      tenantId: user.tenant_id,
       email: user.email,
       sessionId
     };
@@ -211,7 +209,6 @@ class AuthEngine {
     // 3. Store in Redis
     await CacheEngine.set(`framee:refresh:${tokenHash}`, {
       userId: user.id,
-      tenantId: user.tenant_id,
       sessionId
     }, REFRESH_TTL_SEC);
 

@@ -5,9 +5,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key';
 
 /**
  * Middleware to authenticate requests using JWT.
- * Extracts user and tenant info from the token.
+ * Extracts user info from the token. Multi-tenancy is not used.
  */
-export const tenantAuth = (req, res, next) => {
+export const authMiddleware = (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -17,7 +17,6 @@ export const tenantAuth = (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    req.tenantId = decoded.tenantId;
     req.userId = decoded.userId;
     req.email = decoded.email;
 

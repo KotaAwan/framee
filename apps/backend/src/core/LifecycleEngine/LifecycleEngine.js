@@ -18,9 +18,9 @@ class LifecycleEngine {
    * Central gate to check if an action can be performed on a document.
    * Throws errors directly if checks fail.
    */
-  async canPerform(action, doctype, tenantId, userId, doc = null, payload = null) {
+  async canPerform(action, doctype, userId, doc = null, payload = null) {
     // 1. Permission Check
-    const hasPermission = await this.permEngine.can(userId, action, doctype, tenantId, doc);
+    const hasPermission = await this.permEngine.can(userId, action, doctype, doc);
     if (!hasPermission) {
       throw new ForbiddenError(`User lacks permission to ${action} DocType ${doctype}.`);
     }
@@ -31,7 +31,7 @@ class LifecycleEngine {
     }
 
     // 2. Lifecycle Configuration Check
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+    const meta = await this.metaEngine.getDocType(doctype);
     if (!meta.has_lifecycle) {
       return true; // No lifecycle rules apply
     }

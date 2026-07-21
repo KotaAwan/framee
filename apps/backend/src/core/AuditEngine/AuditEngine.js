@@ -47,7 +47,6 @@ class AuditEngine {
   async _handleSystemEvent(action, payload, context) {
     const entry = this._createGlobalLogEntry({
       action,
-      tenant_id: context.tenant_id,
       user_id: payload.userId || context.user_id,
       user_name: context.user_name || 'System',
       ip_address: context.ip_address,
@@ -84,7 +83,6 @@ class AuditEngine {
     // Insert Global Log synchronously
     const globalEntry = this._createGlobalLogEntry({
       action,
-      tenant_id: context.tenant_id,
       doctype,
       doc_id: docId,
       doc_name: docNameTitle,
@@ -109,12 +107,9 @@ class AuditEngine {
 
     let changeSummary = action === 'COMMENT' ? 'Commented' : action === 'LIKE' ? 'Liked' : 'Unliked';
 
-
-
     // Insert Global Log synchronously
     const globalEntry = this._createGlobalLogEntry({
       action,
-      tenant_id: context.tenant_id,
       doctype,
       doc_id: doc_id,
       doc_name: payload.doc_name || doc_id,
@@ -133,7 +128,7 @@ class AuditEngine {
     // Insert into local _logs table
     try {
       const metaEngine = (await import('../Container.js')).default.resolve('MetadataEngine');
-      const meta = await metaEngine.getDocType(doctype, context.tenant_id);
+      const meta = await metaEngine.getDocType(doctype);
       if (meta && meta.table_name && meta.table_name !== 'sys_docfield') {
         const knex = DatabaseEngine.getRawConnection();
         await knex(`${meta.table_name}_logs`).insert({
@@ -158,7 +153,6 @@ class AuditEngine {
     // Insert Global Log synchronously
     const globalEntry = this._createGlobalLogEntry({
       action: action_name || 'Transition',
-      tenant_id: context.tenant_id,
       doctype,
       doc_id: doc_id,
       doc_name: payload.doc_name || doc_id,
@@ -180,7 +174,6 @@ class AuditEngine {
   _createGlobalLogEntry(data) {
     return {
       id: randomUUID(),
-      tenant_id: data.tenant_id || 'system',
       doctype: data.doctype || null,
       doc_id: data.doc_id || null,
       doc_name: data.doc_name || null,
@@ -210,7 +203,6 @@ class AuditEngine {
       if (this.SENSITIVE_FIELDS.includes(key.toLowerCase())) continue;
 
       if (oldDoc[key] !== newDoc[key]) {
-        // Simple equality check, can be expanded for deep object comparison
         diff[key] = { from: oldDoc[key], to: newDoc[key] };
       }
     }

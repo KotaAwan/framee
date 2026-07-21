@@ -1,143 +1,202 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import { useAuthStore } from '@/store/auth.store';
-import axios from 'axios';
-import { LockKeyhole, Loader2 } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
+import apiClient from '@/lib/api.client';
+import { Settings, Loader2, Eye, EyeOff } from 'lucide-react';
+import Breadcrumb from '@/components/layout/Breadcrumb';
 import { useTranslation } from '@/hooks/useTranslation';
 
 export default function ChangePassword() {
   const { t } = useTranslation();
-  const { token } = useAuthStore();
+  const { accessToken } = useAuthStore();
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('success');
-
-  // Form State
+  
+  const [idField, setIdField] = useState('');
+  const [email, setEmail] = useState('');
+  
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
-  const handleChangePassword = async (e) => {
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const fetchProfile = async () => {
+      try {
+        const res = await apiClient.get('/api/v1/user/me');
+        if (res.data.success) {
+          const user = res.data.data;
+          setEmail(user.email || '');
+          setIdField(user.id || '');
+        }
+      } catch (error) {
+        console.error('Failed to fetch profile:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [accessToken]);
+
+  const handleUpdatePassword = async (e) => {
     e.preventDefault();
-    setMessage('');
-    
-    if (newPassword !== confirmPassword) {
-      setMessageType('error');
-      setMessage(t('password.mismatch', 'New password and confirm password do not match.'));
+    if (!currentPassword || !newPassword) {
+      setMessage('Please fill in both current and new passwords.');
       return;
     }
-
+    
     setIsSaving(true);
+    setMessage('');
 
     try {
-      // NOTE: This endpoint might not be fully implemented in the backend yet.
-      const res = await axios.put('http://localhost:3001/api/v1/user/password', {
+      const res = await apiClient.put('/api/v1/user/change-password', {
         current_password: currentPassword,
         new_password: newPassword
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
 
       if (res.data.success) {
-        setMessageType('success');
-        setMessage(t('password.success', 'Password changed successfully!'));
+        setMessage('success:Password updated successfully!');
         setCurrentPassword('');
         setNewPassword('');
-        setConfirmPassword('');
       }
     } catch (error) {
-      console.error('Failed to change password:', error);
-      setMessageType('error');
-      setMessage(error.response?.data?.error || t('password.error', 'Failed to change password. Please check your current password.'));
+      const errorMsg = error.response?.data?.message || 'Failed to update password.';
+      setMessage(errorMsg);
     } finally {
       setIsSaving(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-(--color-primary)" />
+      </div>
+    );
+  }
+
+  const isSuccessMessage = message.startsWith('success:');
+  const displayMessage = isSuccessMessage ? message.replace('success:', '') : message;
+
   return (
     <>
       <Head>
-        <title>{t('password.title', 'Change Password')} | Framee</title>
+        <title>{t('change_password', 'Change Password')} | Framee</title>
       </Head>
 
       <div className="space-y-4">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="text-blue-600 dark:text-blue-500">
-              <LockKeyhole className="h-6 w-6" />
+            <div className="text-(--color-primary)">
+              <Settings className="h-6 w-6" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              {t('password.title', 'Change Password')}
+            <h1 className="text-2xl font-bold tracking-tight text-(--color-text)">
+              {t('change_password', 'Change Password')}
             </h1>
           </div>
-          <div className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
-            <LockKeyhole className="h-4 w-4" /> / {t('user', 'User')} / <span className="text-slate-900 dark:text-slate-100">{t('password.title', 'Change Password')}</span>
+          <div className="flex items-center gap-4">
+            <Breadcrumb items={[{ label: t('user', 'User'), href: '#' }, { label: t('change_password', 'Change Password') }]} />
           </div>
         </div>
 
+        {/* Top Action Bar */}
+        <div className="flex justify-end mb-4">
+          <button
+            type="button"
+            onClick={handleUpdatePassword}
+            disabled={isSaving}
+            className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
+          >
+            {isSaving ? 'Updating...' : t('update', 'Update')}
+          </button>
+        </div>
+
         {/* Main Content Area */}
-        <Card>
-          <div className="p-4">
+        <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden">
+          <div className="px-5 pt-4 pb-3 border-b border-(--color-border) bg-(--color-section-header-bg) flex items-center justify-between">
+            <h3 className="font-semibold text-(--color-text) text-base">General</h3>
+            <span className="text-sm font-semibold text-(--color-text)">
+              ID : {idField}
+            </span>
+          </div>
+          
+          <div className="px-5 pt-5 pb-8">
             {message && (
-              <div className={`p-4 mb-6 rounded-md text-sm ${messageType === 'success' ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                {message}
+              <div className={`p-4 mb-6 rounded-md text-sm font-medium ${isSuccessMessage ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                {displayMessage}
               </div>
             )}
 
-            <form onSubmit={handleChangePassword} className="space-y-4 max-w-2xl">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  {t('password.current', 'Current Password')}
-                </label>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-              </div>
+            <form onSubmit={handleUpdatePassword} className="space-y-4">
+              <div className="flex flex-col gap-4">
+                {/* Email Address */}
+                <div>
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
+                    {t('profile.email', 'Email Address')}
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    disabled
+                    className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface-hover) px-3 py-1 text-sm shadow-sm text-(--color-muted) cursor-not-allowed"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  {t('password.new', 'New Password')}
-                </label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-              </div>
+                {/* Current Password */}
+                <div>
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
+                    Current Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? "text" : "password"}
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                      className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-primary) text-(--color-text) pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                    >
+                      {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  {t('password.confirm', 'Confirm New Password')}
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-              </div>
-
-              <div className="pt-4 mt-4 flex justify-start">
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 min-w-[100px]"
-                >
-                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('save', 'Save')}
-                </button>
+                {/* New Password */}
+                <div>
+                  <label className="block text-sm font-medium text-(--color-text) mb-1">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-primary) text-(--color-text) pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                    >
+                      {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
               </div>
             </form>
           </div>
-        </Card>
+        </div>
       </div>
     </>
   );

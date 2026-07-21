@@ -10,42 +10,26 @@ describe('DatabaseEngine', () => {
     DatabaseEngine.db = knex({ client: 'mysql2' });
   });
 
-  it('should automatically apply tenant_id filter to all queries', () => {
-    const qb = DatabaseEngine.query('dt_customer', 'tenant-1');
-    const sql = qb.toSQL().sql;
-    
-    // Check that tenant_id is in the where clause
-    expect(sql).toContain('`tenant_id` = ?');
-    expect(qb.toSQL().bindings[0]).toBe('tenant-1');
-  });
-
-  it('should throw if tenant_id is missing', () => {
-    expect(() => {
-      DatabaseEngine.query('dt_customer', null);
-    }).toThrow(DatabaseError);
-  });
-
-  it('should automatically filter out Deleted status', () => {
-    const qb = DatabaseEngine.query('dt_customer', 'tenant-1');
+  it('should automatically filter out Deleted status by default', () => {
+    const qb = DatabaseEngine.query('dt_customer');
     const sql = qb.toSQL().sql;
     
     expect(sql).toContain('not `status` = ?');
-    expect(qb.toSQL().bindings[1]).toBe('Deleted');
+    expect(qb.toSQL().bindings[0]).toBe('Deleted');
   });
 
   it('should not filter out Deleted status if includeDeleted is true', () => {
-    const qb = DatabaseEngine.query('dt_customer', 'tenant-1', { includeDeleted: true });
+    const qb = DatabaseEngine.query('dt_customer', { includeDeleted: true });
     const sql = qb.toSQL().sql;
     
-    expect(sql).not.toContain('`status` != ?');
-    // Only binding should be tenant-1
-    expect(qb.toSQL().bindings.length).toBe(1);
+    expect(sql).not.toContain('`status` = ?');
+    expect(qb.toSQL().bindings.length).toBe(0);
   });
 
   it('should throw if engine is not initialized', () => {
     DatabaseEngine.db = null;
     expect(() => {
-      DatabaseEngine.query('dt_customer', 'tenant-1');
+      DatabaseEngine.query('dt_customer');
     }).toThrow(DatabaseError);
   });
 });

@@ -119,7 +119,6 @@ class EventEngine {
     // Queue log for async writing
     this.logQueue.push({
       id: randomUUID(),
-      tenant_id: context.tenant_id || 'system',
       event_name: eventName,
       publisher: context.publisher || 'system',
       payload_summary: this._summarizePayload(payload),

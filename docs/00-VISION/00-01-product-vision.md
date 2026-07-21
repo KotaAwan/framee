@@ -13,7 +13,7 @@ The framework provides a standardized foundation that can power any vertical ERP
 1. **Accelerate ERP Development** — Reduce time-to-market by allowing non-repetitive, metadata-driven module creation rather than custom coding per feature.
 2. **Enable Plugin First Extensibility** — Allow third-party plugins and internal modules to extend the system without modifying core code.
 3. **Provide AI-Friendly Structure** — Expose metadata, events, and APIs in a format that AI agents can read, generate, and interact with natively.
-4. **Support Multi-Tenancy** — Enable SaaS deployment where multiple organizations share one platform instance with complete data isolation.
+4. ~~**Support Multi-Tenancy**~~ — ~~Enable SaaS deployment where multiple organizations share one platform instance with complete data isolation.~~ **[DEPRECATED: Multi-tenancy is no longer used in Framee. Single-tenant deployment only.]**
 5. **Ensure Enterprise-Grade Security** — Role-based access control, field-level permissions, and audit trails built into the framework core.
 6. **Maximize Developer Productivity** — Provide clear abstractions, consistent patterns, and tooling that allow developers to build reliable ERP features efficiently.
 7. **Support Mobile First** — Ensure the frontend and API layer are designed for mobile-responsive, progressive interactions from day one.
@@ -29,7 +29,7 @@ The framework provides a standardized foundation that can power any vertical ERP
 - Frontend foundation (NextJS architecture, Dynamic Forms, Dynamic Lists, Dynamic Layouts)
 - REST API layer auto-generated from metadata
 - Plugin registration and lifecycle management
-- Multi-tenant data isolation at the row level
+- ~~Multi-tenant data isolation at the row level~~ **[DEPRECATED]**
 - Redis-based caching for metadata and frequently accessed records
 - Event system for inter-module and plugin communication
 - AI-friendly metadata exposure and structured event logging
@@ -73,9 +73,12 @@ The framework provides a standardized foundation that can power any vertical ERP
 - The system must emit lifecycle events (before_insert, after_insert, before_update, after_update, before_delete, after_delete) for all DocType operations.
 - Plugins and modules must be able to subscribe to events without modifying core code.
 
-### FR-008 Multi-Tenancy
-- All records must carry a `tenant_id` field.
-- All queries must be automatically scoped to the active tenant context.
+### FR-008 ~~Multi-Tenancy~~ [DEPRECATED]
+
+> **This requirement is no longer active. Framee runs in single-tenant mode. The `tenant_id` column is not used in the current implementation. All database queries operate without tenant scoping.**
+
+- ~~All records must carry a `tenant_id` field.~~
+- ~~All queries must be automatically scoped to the active tenant context.~~
 
 ### FR-009 AI Integration
 - Metadata must be exportable as structured JSON for AI agent consumption.
@@ -108,7 +111,7 @@ Framee is structured as a layered architecture:
                            │ REST API
 ┌──────────────────────────▼─────────────────────────────┐
 │                  API Engine (ExpressJS)                │
-│         Auth | Routing | Rate Limit | Tenant Ctx       │
+│              Auth | Routing | Rate Limit               │
 └──────────────────────────┬─────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────┐
@@ -119,7 +122,7 @@ Framee is structured as a layered architecture:
                            │
 ┌──────────────────────────▼─────────────────────────────┐
 │               Database Layer (MySQL)                   │
-│          Row-Level Tenant Isolation | Indexes          │
+│                Single-Tenant | Indexes                 │
 └────────────────────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────┐
@@ -136,7 +139,7 @@ Framee is structured as a layered architecture:
 | Metadata Driven         | Behavior is declared, not coded                                              |
 | Event Driven            | All operations publish events; plugins react asynchronously                  |
 | AI Friendly             | Metadata and events are machine-readable and well-structured                 |
-| Multi-Tenant Ready      | Tenant context flows through all layers automatically                        |
+| ~~Multi-Tenant Ready~~  | ~~Tenant context flows through all layers automatically~~ **[DEPRECATED]**  |
 | Mobile First            | APIs and UI components designed for mobile breakpoints first                 |
 | Audit by Default.       | Every write is audited automatically — no developer action required.         |
 | Immutable History       | Submitted/Locked documents cannot be silently edited — amendment is the path |
@@ -171,10 +174,10 @@ Framee is structured as a layered architecture:
 ### Common Fields (All `dt_*` Document Tables)
 
 > **`is_deleted` and `is_locked` are retired.** The `status` field is the single source of truth.
+> **`tenant_id` is also no longer actively used.** Framee operates in single-tenant mode.
 
 ```
-id              VARCHAR(36)  PK, UUID
-tenant_id       VARCHAR(36)  NOT NULL
+id              VARCHAR(36)  PK, UUID (or auto-increment INT in current impl)
 status          VARCHAR(20)  NOT NULL DEFAULT 'Draft'
 created_by      VARCHAR(36)  FK → sys_user.id
 updated_by      VARCHAR(36)  FK → sys_user.id
@@ -192,10 +195,10 @@ cancel_reason   TEXT         NULL
 ```
 
 ### Indexes
-- All tables: `(tenant_id, is_deleted)` composite index
-- `sys_doctype`: `(tenant_id, name)` unique index
+- All tables: standard indexes on `status` and `created_at`
+- ~~`(tenant_id, is_deleted)` composite index~~ **[DEPRECATED — no multi-tenant indexing]**
+- `sys_doctype`: `name` unique index
 - `sys_docfield`: `(doctype_id, fieldname)` unique index
-- `sys_event_log`: `(tenant_id, doctype, doc_id, created_at)` index
 
 ---
 
@@ -241,10 +244,10 @@ The UI is **Mobile First** — all views are designed for 375px viewport and sca
 
 ## Validation Rules
 
-- Every DocType must have a unique `name` per tenant.
+- Every DocType must have a unique `name`.
 - Fieldnames must be lowercase alphanumeric with underscores only.
 - Required fields must be enforced at the API layer, not only the UI.
-- Tenant ID must never be overrideable by client input.
+- ~~Tenant ID must never be overrideable by client input.~~ **[DEPRECATED — no multi-tenancy]**
 - Workflow transitions must only be triggered by users with the appropriate Role.
 
 ---
@@ -253,16 +256,16 @@ The UI is **Mobile First** — all views are designed for 375px viewport and sca
 
 ### Authentication
 - JWT-based authentication with short-lived access tokens and refresh token rotation.
-- Session context carries `user_id`, `tenant_id`, and `roles[]`.
+- Session context carries `user_id` and `roles[]`.
 
 ### Authorization
 - Role-based access control enforced at the API engine layer.
 - Field-level permission checks before serializing API responses.
 - No record is returned if the user's role does not have `read` permission on the DocType.
 
-### Multi-Tenant Isolation
-- All queries automatically prepend `WHERE tenant_id = :tenant_id`.
-- Tenant ID is resolved from JWT, never from client payload.
+### ~~Multi-Tenant Isolation~~ [DEPRECATED]
+- ~~All queries automatically prepend `WHERE tenant_id = :tenant_id`.~~
+- ~~Tenant ID is resolved from JWT, never from client payload.~~
 
 ### Input Validation
 - All inputs are validated against DocField metadata rules (type, required, max_length).

@@ -1,5 +1,5 @@
 import express from 'express';
-import { tenantAuth } from '../middlewares/tenantAuth.js';
+import { authMiddleware } from '../middlewares/tenantAuth.js';
 import Container from '../../core/Container.js';
 import { ForbiddenError } from '../../utils/errors.js';
 
@@ -7,13 +7,7 @@ const getDbEngine = () => Container.resolve('DatabaseEngine');
 
 const router = express.Router();
 
-/**
- * Require System Manager or Auditor role
- * (Simplified role check for now)
- */
 const requireAdmin = async (req, res, next) => {
-  // In a full implementation, check sys_user_role for this tenant
-  // For now, we will pass it through for development purposes.
   next();
 };
 
@@ -21,7 +15,7 @@ const requireAdmin = async (req, res, next) => {
  * GET /api/v1/audit
  * Query full global audit log
  */
-router.get('/', tenantAuth, requireAdmin, async (req, res, next) => {
+router.get('/', authMiddleware, requireAdmin, async (req, res, next) => {
   try {
     const { limit = 50, offset = 0, doctype, action, user_id } = req.query;
     
@@ -30,7 +24,7 @@ router.get('/', tenantAuth, requireAdmin, async (req, res, next) => {
     
     if (doctype) {
       const metaEngine = (await import('../../core/Container.js')).default.resolve('MetadataEngine');
-      const meta = await metaEngine.getDocType(doctype, req.tenantId);
+      const meta = await metaEngine.getDocType(doctype);
       if (!meta) return res.status(404).json({ success: false, message: `DocType ${doctype} not found.` });
       
       const localLogTable = `${meta.table_name}_logs`;
@@ -81,14 +75,14 @@ router.get('/', tenantAuth, requireAdmin, async (req, res, next) => {
  * GET /api/v1/audit/doc/:doctype/:id
  * All audit events for a document
  */
-router.get('/doc/:doctype/:id', tenantAuth, requireAdmin, async (req, res, next) => {
+router.get('/doc/:doctype/:id', authMiddleware, requireAdmin, async (req, res, next) => {
   try {
     const { doctype, id } = req.params;
     
     const dbEngine = getDbEngine();
     const knex = dbEngine.getRawConnection();
     const metaEngine = (await import('../../core/Container.js')).default.resolve('MetadataEngine');
-    const meta = await metaEngine.getDocType(doctype, req.tenantId);
+    const meta = await metaEngine.getDocType(doctype);
     if (!meta) return res.status(404).json({ success: false, message: `DocType ${doctype} not found.` });
     
     const localLogTable = `${meta.table_name}_logs`;
@@ -121,7 +115,7 @@ router.get('/doc/:doctype/:id', tenantAuth, requireAdmin, async (req, res, next)
  * GET /api/v1/audit/user/:user_id
  * All audit events by a specific user
  */
-router.get('/user/:user_id', tenantAuth, requireAdmin, async (req, res, next) => {
+router.get('/user/:user_id', authMiddleware, requireAdmin, async (req, res, next) => {
   try {
     const { user_id } = req.params;
     

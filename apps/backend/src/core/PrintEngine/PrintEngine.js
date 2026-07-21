@@ -15,7 +15,7 @@ class PrintEngine {
     this.dbEngine = Container.resolve('DatabaseEngine');
     this.crudEngine = Container.resolve('CRUDEngine');
     
-    // Register some helpful Handlebars helpers
+    // Register Handlebars helpers
     Handlebars.registerHelper('formatDate', (dateString) => {
       if (!dateString) return '';
       return new Date(dateString).toLocaleDateString();
@@ -30,8 +30,8 @@ class PrintEngine {
   /**
    * Fetch the active print format for a given DocType.
    */
-  async _getPrintFormat(doctype, tenantId, formatName = null) {
-    const query = this.dbEngine.query('sys_print_format', tenantId)
+  async _getPrintFormat(doctype, formatName = null) {
+    const query = this.dbEngine.query('sys_print_format')
       .where({ doctype_name: doctype, is_active: true });
 
     if (formatName) {
@@ -42,9 +42,9 @@ class PrintEngine {
 
     const format = await query.first();
     
-    // If no explicit default, just get the first one available
+    // If no explicit default, get the first one available
     if (!format && !formatName) {
-      return await this.dbEngine.query('sys_print_format', tenantId)
+      return await this.dbEngine.query('sys_print_format')
         .where({ doctype_name: doctype, is_active: true })
         .first();
     }
@@ -55,22 +55,21 @@ class PrintEngine {
   /**
    * Generates HTML from a Document and its Print Format.
    */
-  async renderHtml(doctype, id, tenantId, userId, formatName = null) {
+  async renderHtml(doctype, id, userId, formatName = null) {
     // 1. Get data
-    const docData = await this.crudEngine.get(doctype, id, tenantId, userId);
+    const docData = await this.crudEngine.get(doctype, id, userId);
     
     // 2. Get format
-    const format = await this._getPrintFormat(doctype, tenantId, formatName);
+    const format = await this._getPrintFormat(doctype, formatName);
     
     if (!format) {
-      // Fallback auto-generated HTML
       return this._generateFallbackHtml(doctype, docData);
     }
     
     // 3. Compile template
     try {
       const template = Handlebars.compile(format.html_template);
-      return template({ doc: docData, tenant_id: tenantId });
+      return template({ doc: docData });
     } catch (err) {
       logger.error(`Error compiling print format ${format.name}:`, err);
       throw new FrameeError('PRINT_TEMPLATE_ERROR', 'Failed to compile print template.');
@@ -84,7 +83,6 @@ class PrintEngine {
     let rows = '';
     for (const [key, value] of Object.entries(docData)) {
       if (typeof value === 'object' && value !== null) {
-        // Skip child tables for basic fallback
         continue;
       }
       rows += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>${key}</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${value !== null ? value : ''}</td></tr>`;
@@ -112,8 +110,8 @@ class PrintEngine {
   /**
    * Generates a PDF buffer from HTML.
    */
-  async renderPdf(doctype, id, tenantId, userId, formatName = null) {
-    const html = await this.renderHtml(doctype, id, tenantId, userId, formatName);
+  async renderPdf(doctype, id, userId, formatName = null) {
+    const html = await this.renderHtml(doctype, id, userId, formatName);
     
     let browser;
     try {

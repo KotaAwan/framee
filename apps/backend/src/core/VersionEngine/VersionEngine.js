@@ -31,18 +31,18 @@ class VersionEngine {
 
   // --- Core API ---
   
-  async getVersions(doctype, docId, tenantId) {
+  async getVersions(doctype, docId) {
     const knex = DatabaseEngine.getRawConnection();
     return await knex('sys_doc_version')
-      .where({ tenant_id: tenantId, doctype, doc_id: docId })
+      .where({ doctype, doc_id: docId })
       .select('version_number', 'is_current', 'is_protected', 'trigger_event', 'saved_by_name', 'saved_at', 'change_summary')
       .orderBy('version_number', 'desc');
   }
 
-  async getVersion(doctype, docId, versionNumber, tenantId) {
+  async getVersion(doctype, docId, versionNumber) {
     const knex = DatabaseEngine.getRawConnection();
     const version = await knex('sys_doc_version')
-      .where({ tenant_id: tenantId, doctype, doc_id: docId, version_number: versionNumber })
+      .where({ doctype, doc_id: docId, version_number: versionNumber })
       .first();
       
     if (!version) {
@@ -53,10 +53,10 @@ class VersionEngine {
     return version;
   }
 
-  async compareVersions(doctype, docId, v1, v2, tenantId) {
+  async compareVersions(doctype, docId, v1, v2) {
     const [versionA, versionB] = await Promise.all([
-      this.getVersion(doctype, docId, v1, tenantId),
-      this.getVersion(doctype, docId, v2, tenantId)
+      this.getVersion(doctype, docId, v1),
+      this.getVersion(doctype, docId, v2)
     ]);
     
     const snapA = versionA.snapshot;
@@ -80,31 +80,26 @@ class VersionEngine {
     };
   }
 
-  async restoreVersion(doctype, docId, versionNumber, tenantId, userId) {
-    // Check if doc is locked or submitted (done in CRUD typically, but we should enforce here too ideally)
+  async restoreVersion(doctype, docId, versionNumber, userId) {
     const crudEngine = Container.resolve('CRUDEngine');
-    const currentDoc = await crudEngine.get(doctype, docId, tenantId, userId);
+    const currentDoc = await crudEngine.get(doctype, docId, userId);
     
     if (currentDoc.status === 'Locked' || currentDoc.status === 'Cancelled' || currentDoc.status === 'Deleted') {
       throw new ValidationError(`Cannot restore a document with status: ${currentDoc.status}`);
     }
 
-    const versionToRestore = await this.getVersion(doctype, docId, versionNumber, tenantId);
+    const versionToRestore = await this.getVersion(doctype, docId, versionNumber);
     const snap = versionToRestore.snapshot;
 
-    // Remove system fields from snapshot to avoid overwriting them
     const restoreData = { ...snap };
     delete restoreData.id;
-    delete restoreData.tenant_id;
     delete restoreData.created_at;
     delete restoreData.created_by;
     delete restoreData.updated_at;
     delete restoreData.updated_by;
     delete restoreData.status;
 
-    // Use CRUDEngine to update it so it triggers normal lifecycle hooks
-    // Which will in turn trigger a new version snapshot creation
-    await crudEngine.update(doctype, docId, restoreData, tenantId, userId);
+    await crudEngine.update(doctype, docId, restoreData, userId);
     
     return {
       id: docId,
@@ -119,17 +114,13 @@ class VersionEngine {
     const { doctype, doc, oldDoc } = payload;
     if (!doctype || !doc) return;
 
-    // Note: We should ideally check if doctype track_changes is true.
-    // For now we assume we track all that emit these events.
-
     let changeSummary = `Document ${triggerEvent.replace('after_', '')}`;
     if (triggerEvent === 'after_update' && oldDoc) {
-      changeSummary = 'Document updated'; // Could compute changed fields here like AuditEngine does
+      changeSummary = 'Document updated';
     } else if (triggerEvent === 'submitted') {
       changeSummary = 'Document submitted';
     }
 
-    // Prepare snapshot (stripping sensitive data)
     const snapshot = { ...doc };
     for (const field of this.SENSITIVE_FIELDS) {
       if (field in snapshot) delete snapshot[field];
@@ -138,14 +129,13 @@ class VersionEngine {
     const docId = doc.name || doc.id;
 
     // Retrieve and increment version number using Redis
-    const cacheKey = `framee:version:${context.tenant_id}:${doctype}:${docId}`;
+    const cacheKey = `framee:version:${doctype}:${docId}`;
     let currentVersion = await CacheEngine.get(cacheKey) || 0;
     currentVersion += 1;
-    await CacheEngine.set(cacheKey, currentVersion); // Persistent ideally, or use INCR directly if Redis client was exposed
+    await CacheEngine.set(cacheKey, currentVersion);
 
     const versionData = {
       id: randomUUID(),
-      tenant_id: context.tenant_id,
       doctype,
       doc_id: docId,
       version_number: currentVersion,
@@ -175,18 +165,14 @@ class VersionEngine {
       for (const item of batch) {
         // Mark previous current as false
         await knex('sys_doc_version')
-          .where({ tenant_id: item.tenant_id, doctype: item.doctype, doc_id: item.doc_id, is_current: true })
+          .where({ doctype: item.doctype, doc_id: item.doc_id, is_current: true })
           .update({ is_current: false });
 
         // Insert new version
         await knex('sys_doc_version').insert(item);
-
-        // Pruning logic could run here or in a separate scheduled job.
-        // We'll skip inline pruning for now to keep it lightweight.
       }
     } catch (err) {
       logger.error('Failed to flush version logs to database:', err);
-      // this.logQueue.unshift(...batch); // simplified error handling
     } finally {
       this.isFlushing = false;
     }

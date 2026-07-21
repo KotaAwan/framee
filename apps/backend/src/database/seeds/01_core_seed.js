@@ -238,15 +238,18 @@ export async function seed(knex) {
   
   // Helper to push fields
   const pushFields = (table_name, fields) => {
-    fields.forEach((f, idx) => {
+    // Prepend system ID column to all tables in sys_docfield seed
+    const allFields = [{ fieldname: 'id', label: 'ID', fieldtype: 'Int', in_list: true }, ...fields];
+
+    allFields.forEach((f, idx) => {
       let is_hidden = f.is_hidden || false;
       let in_list = f.in_list;
       let in_filter = f.in_filter;
       
       if (f.fieldname === 'id') {
         is_hidden = f.is_hidden ?? true;
-        in_list = f.in_list ?? false;
-        in_filter = f.in_filter ?? false;
+        in_list = f.in_list ?? true;
+        in_filter = f.in_filter ?? true;
       } else if (f.fieldname === 'code' || f.fieldname === 'name') {
         in_list = f.in_list ?? true;
         in_filter = f.in_filter ?? true;
@@ -270,7 +273,7 @@ export async function seed(knex) {
         in_filter: in_filter,
         in_search: f.in_search || false,
         is_hidden: is_hidden,
-        sort_order: idx + 1
+        sort_order: idx
       });
     });
   };

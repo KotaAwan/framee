@@ -77,7 +77,7 @@ export function useTranslation() {
   const language = useLanguageStore((state) => state.language);
   const translations = useLanguageStore((state) => state.translations); // dynamic from backend
 
-  const t = (key) => {
+  const t = (key, fallback) => {
     // Priority:
     // 1. Dynamic translations from API (stored in Zustand)
     if (translations[key]) return translations[key];
@@ -88,8 +88,8 @@ export function useTranslation() {
     // 3. English fallback (if translation is missing in selected language)
     if (localDict['en'] && localDict['en'][key]) return localDict['en'][key];
     
-    // 4. Return the key itself as last resort
-    return key;
+    // 4. Return fallback argument if provided, otherwise the raw key
+    return fallback || key;
   };
 
   return { t, language };

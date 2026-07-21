@@ -1,7 +1,8 @@
 import express from 'express';
 import multer from 'multer';
+import bcrypt from 'bcryptjs';
 import Container from '../../core/Container.js';
-import { tenantAuth } from '../middlewares/tenantAuth.js';
+import { authMiddleware } from '../middlewares/tenantAuth.js';
 
 const upload = multer({ dest: 'uploads/' });
 const router = express.Router();
@@ -11,8 +12,24 @@ const router = express.Router();
  */
 const getCrudEngine = () => Container.resolve('CRUDEngine');
 
-// All /doc routes require tenant auth
-router.use(tenantAuth);
+/**
+ * Hash password fields before saving to DB.
+ * Applies bcrypt to password_hash and pin_hash if they are non-empty plain text.
+ */
+const BCRYPT_SALT_ROUNDS = 12;
+const hashPasswordFields = async (data) => {
+  const result = { ...data };
+  if (result.password_hash && !result.password_hash.startsWith('$2b$')) {
+    result.password_hash = await bcrypt.hash(result.password_hash, BCRYPT_SALT_ROUNDS);
+  }
+  if (result.pin_hash && !result.pin_hash.startsWith('$2b$')) {
+    result.pin_hash = await bcrypt.hash(result.pin_hash, BCRYPT_SALT_ROUNDS);
+  }
+  return result;
+};
+
+// All /doc routes require auth
+router.use(authMiddleware);
 
 /**
  * Helper to remove sensitive fields from a document before sending to the client.
@@ -23,7 +40,6 @@ const sanitizeDoc = (doc) => {
   const sensitiveFields = ['password', 'password_hash', 'pin', 'pin_hash', 'google_id'];
   const sanitized = { ...doc };
   sensitiveFields.forEach(f => delete sanitized[f]);
-  // Also sanitize children if any (arrays of objects)
   for (const key in sanitized) {
     if (Array.isArray(sanitized[key])) {
       sanitized[key] = sanitized[key].map(child => {
@@ -39,6 +55,51 @@ const sanitizeDoc = (doc) => {
   return sanitized;
 };
 
+// --- IMPORT & EXPORT ENDPOINTS (Must be defined BEFORE /:doctype/:id to avoid conflict) ---
+const getDataEngine = () => Container.resolve('DataEngine');
+
+/**
+ * GET /api/v1/doc/:doctype/export
+ * Export data to CSV, XLSX, or PDF
+ */
+router.get('/:doctype/export', async (req, res, next) => {
+  try {
+    console.log(`\n***`);
+    console.log(`*** GET Export Doctype: "${req.params.doctype}" | Format: "${req.query.format}"`);
+    const dataEngine = getDataEngine();
+    const format = req.query.format || 'xlsx';
+    
+    // Destructure format out to avoid passing it as a database filter query field
+    const { format: _, ...filters } = req.query;
+    const result = await dataEngine.exportData(req.params.doctype, filters, format, req.userId);
+    
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.doctype}-export.${result.extension}"`);
+    res.send(result.buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/doc/:doctype/import
+ * Import data from CSV
+ */
+router.post('/:doctype/import', upload.single('file'), async (req, res, next) => {
+  try {
+    console.log(`\n***`);
+    console.log(`*** POST Import Doctype: "${req.params.doctype}"`);
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded.' });
+    }
+    const dataEngine = getDataEngine();
+    const result = await dataEngine.importData(req.params.doctype, req.file.path, req.userId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * GET /api/v1/doc/:doctype
  * Get a list of documents.
@@ -48,7 +109,7 @@ router.get('/:doctype', async (req, res, next) => {
     console.log(`\n***`);
     console.log(`*** GET List Doctype: "${req.params.doctype}"`);
     const crudEngine = getCrudEngine();
-    const records = await crudEngine.getList(req.params.doctype, req.query, req.tenantId, req.userId);
+    const records = await crudEngine.getList(req.params.doctype, req.query, req.userId);
     res.json({ success: true, data: sanitizeDoc(records) });
   } catch (error) {
     next(error);
@@ -64,7 +125,7 @@ router.get('/:doctype/:id', async (req, res, next) => {
     console.log(`\n***`);
     console.log(`*** GET Doctype: "${req.params.doctype}" | ID: "${req.params.id}"`);
     const crudEngine = getCrudEngine();
-    const record = await crudEngine.get(req.params.doctype, req.params.id, req.tenantId, req.userId);
+    const record = await crudEngine.get(req.params.doctype, req.params.id, req.userId);
     res.json({ success: true, data: sanitizeDoc(record) });
   } catch (error) {
     next(error);
@@ -80,7 +141,8 @@ router.post('/:doctype', async (req, res, next) => {
     console.log(`\n***`);
     console.log(`*** POST Doctype: "${req.params.doctype}" | New`);
     const crudEngine = getCrudEngine();
-    const record = await crudEngine.insert(req.params.doctype, req.body, req.tenantId, req.userId);
+    const body = await hashPasswordFields(req.body);
+    const record = await crudEngine.insert(req.params.doctype, body, req.userId);
     res.status(201).json({ success: true, data: sanitizeDoc(record) });
   } catch (error) {
     next(error);
@@ -96,7 +158,8 @@ router.put('/:doctype/:id', async (req, res, next) => {
     console.log(`\n***`);
     console.log(`*** PUT Doctype: "${req.params.doctype}" | ID: "${req.params.id}"`);
     const crudEngine = getCrudEngine();
-    const record = await crudEngine.update(req.params.doctype, req.params.id, req.body, req.tenantId, req.userId);
+    const body = await hashPasswordFields(req.body);
+    const record = await crudEngine.update(req.params.doctype, req.params.id, body, req.userId);
     res.json({ success: true, data: sanitizeDoc(record) });
   } catch (error) {
     next(error);
@@ -112,7 +175,7 @@ router.delete('/:doctype/:id', async (req, res, next) => {
     console.log(`\n***`);
     console.log(`*** DELETE Doctype: "${req.params.doctype}" | ID: "${req.params.id}"`);
     const crudEngine = getCrudEngine();
-    const result = await crudEngine.delete(req.params.doctype, req.params.id, req.tenantId, req.userId, req.body.delete_reason);
+    const result = await crudEngine.delete(req.params.doctype, req.params.id, req.userId, req.body.delete_reason);
     res.json({ success: true, ...result });
   } catch (error) {
     next(error);
@@ -135,7 +198,7 @@ router.post('/:doctype/:id/comment', async (req, res, next) => {
 
     EventEngine.emit(`${doctype}.comment`, 
       { doctype, doc_id: id, comment },
-      { tenant_id: req.tenantId, user_id: req.userId, user_name: req.user?.full_name || 'System' }
+      { user_id: req.userId, user_name: req.user?.full_name || 'System' }
     );
     
     res.json({ success: true, message: 'Comment added' });
@@ -155,7 +218,7 @@ router.post('/:doctype/:id/like', async (req, res, next) => {
     
     EventEngine.emit(action === 'UNLIKE' ? `${doctype}.unliked` : `${doctype}.liked`, 
       { doctype, doc_id: id },
-      { tenant_id: req.tenantId, user_id: req.userId, user_name: req.user?.full_name || 'System' }
+      { user_id: req.userId, user_name: req.user?.full_name || 'System' }
     );
     
     res.json({ success: true, message: action === 'UNLIKE' ? 'Unliked' : 'Liked' });
@@ -173,7 +236,7 @@ router.post('/:doctype/:id/like', async (req, res, next) => {
 router.post('/:doctype/:id/submit', async (req, res, next) => {
   try {
     const crudEngine = getCrudEngine();
-    const record = await crudEngine.submit(req.params.doctype, req.params.id, req.tenantId, req.userId);
+    const record = await crudEngine.submit(req.params.doctype, req.params.id, req.userId);
     res.json({ success: true, data: record });
   } catch (error) {
     next(error);
@@ -182,12 +245,26 @@ router.post('/:doctype/:id/submit', async (req, res, next) => {
 
 /**
  * POST /api/v1/doc/:doctype/:id/cancel
- * Cancel a document.
+ * Cancel a submitted document.
  */
 router.post('/:doctype/:id/cancel', async (req, res, next) => {
   try {
     const crudEngine = getCrudEngine();
-    const record = await crudEngine.cancel(req.params.doctype, req.params.id, req.tenantId, req.userId, req.body.cancel_reason);
+    const record = await crudEngine.cancel(req.params.doctype, req.params.id, req.userId);
+    res.json({ success: true, data: record });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/doc/:doctype/:id/lock
+ * Lock a document.
+ */
+router.post('/:doctype/:id/lock', async (req, res, next) => {
+  try {
+    const crudEngine = getCrudEngine();
+    const record = await crudEngine.lock(req.params.doctype, req.params.id, req.userId);
     res.json({ success: true, data: record });
   } catch (error) {
     next(error);
@@ -196,37 +273,13 @@ router.post('/:doctype/:id/cancel', async (req, res, next) => {
 
 /**
  * POST /api/v1/doc/:doctype/:id/unlock
- * Unlock a document (Draft).
+ * Unlock a document.
  */
 router.post('/:doctype/:id/unlock', async (req, res, next) => {
   try {
     const crudEngine = getCrudEngine();
-    const record = await crudEngine.toggleLock(req.params.doctype, req.params.id, 'Draft', req.tenantId, req.userId);
+    const record = await crudEngine.unlock(req.params.doctype, req.params.id, req.userId);
     res.json({ success: true, data: record });
-  } catch (error) {
-    next(error);
-  }
-});
-
-
-// --- WORKFLOW ENDPOINTS ---
-
-const getWorkflowEngine = () => Container.resolve('WorkflowEngine');
-
-/**
- * GET /api/v1/doc/:doctype/:id/workflow/transitions
- * Get available workflow transitions for a document
- */
-router.get('/:doctype/:id/workflow/transitions', async (req, res, next) => {
-  try {
-    console.log(`\n***`);
-    console.log(`*** GET Workflow Transitions Doctype: "${req.params.doctype}" | ID: "${req.params.id}"`);
-    const workflowEngine = getWorkflowEngine();
-    // Assuming req.user is set by auth middleware, if not we only have userId.
-    // In our system, auth middleware attaches req.user object.
-    const user = req.user || { id: req.userId, is_system_user: true }; // Fallback
-    const transitions = await workflowEngine.getAvailableTransitions(req.params.doctype, req.params.id, req.tenantId, user);
-    res.json({ success: true, data: transitions });
   } catch (error) {
     next(error);
   }
@@ -234,20 +287,18 @@ router.get('/:doctype/:id/workflow/transitions', async (req, res, next) => {
 
 /**
  * POST /api/v1/doc/:doctype/:id/workflow/transition
- * Execute a workflow transition
+ * Trigger a workflow transition.
  */
+const getWorkflowEngine = () => Container.resolve('WorkflowEngine');
 router.post('/:doctype/:id/workflow/transition', async (req, res, next) => {
   try {
-    console.log(`\n***`);
-    console.log(`*** POST Workflow Transition Doctype: "${req.params.doctype}" | ID: "${req.params.id}" | Action: "${req.body.action_key || req.body.action}"`);
-    const workflowEngine = getWorkflowEngine();
-    const user = req.user || { id: req.userId, is_system_user: true }; // Fallback
-    const record = await workflowEngine.executeTransition(
+    const wfEngine = getWorkflowEngine();
+    const user = req.user || { id: req.userId, is_system_user: true };
+    const record = await wfEngine.executeTransition(
       req.params.doctype, 
       req.params.id, 
-      req.body.action_key || req.body.action, 
-      req.body.comment,
-      req.tenantId, 
+      req.body.action, 
+      req.body.comment, 
       user
     );
     res.json({ success: true, data: record });
@@ -257,7 +308,6 @@ router.post('/:doctype/:id/workflow/transition', async (req, res, next) => {
 });
 
 // --- PRINT ENDPOINTS ---
-
 const getPrintEngine = () => Container.resolve('PrintEngine');
 
 /**
@@ -267,7 +317,7 @@ const getPrintEngine = () => Container.resolve('PrintEngine');
 router.get('/:doctype/:id/print', async (req, res, next) => {
   try {
     const printEngine = getPrintEngine();
-    const html = await printEngine.renderHtml(req.params.doctype, req.params.id, req.tenantId, req.userId, req.query.format);
+    const html = await printEngine.renderHtml(req.params.doctype, req.params.id, req.userId, req.query.format);
     res.send(html);
   } catch (error) {
     next(error);
@@ -281,7 +331,7 @@ router.get('/:doctype/:id/print', async (req, res, next) => {
 router.get('/:doctype/:id/pdf', async (req, res, next) => {
   try {
     const printEngine = getPrintEngine();
-    const pdfBuffer = await printEngine.renderPdf(req.params.doctype, req.params.id, req.tenantId, req.userId, req.query.format);
+    const pdfBuffer = await printEngine.renderPdf(req.params.doctype, req.params.id, req.userId, req.query.format);
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${req.params.doctype}-${req.params.id}.pdf"`);
@@ -291,47 +341,7 @@ router.get('/:doctype/:id/pdf', async (req, res, next) => {
   }
 });
 
-// --- IMPORT & EXPORT ENDPOINTS ---
-
-const getDataEngine = () => Container.resolve('DataEngine');
-
-/**
- * GET /api/v1/doc/:doctype/export?format=csv
- * Export data to CSV or XLSX
- */
-router.get('/:doctype/export', async (req, res, next) => {
-  try {
-    const dataEngine = getDataEngine();
-    const format = req.query.format || 'csv';
-    const result = await dataEngine.exportData(req.params.doctype, req.query, format, req.tenantId, req.userId);
-    
-    res.setHeader('Content-Type', result.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.doctype}-export.${result.extension}"`);
-    res.send(result.buffer);
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * POST /api/v1/doc/:doctype/import
- * Import data from CSV
- */
-router.post('/:doctype/import', upload.single('file'), async (req, res, next) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No file uploaded.' });
-    }
-    const dataEngine = getDataEngine();
-    const result = await dataEngine.importData(req.params.doctype, req.file.path, req.tenantId, req.userId);
-    res.json({ success: true, ...result });
-  } catch (error) {
-    next(error);
-  }
-});
-
 // --- VERSION ENDPOINTS ---
-
 const getVersionEngine = () => Container.resolve('VersionEngine');
 
 /**
@@ -341,7 +351,7 @@ const getVersionEngine = () => Container.resolve('VersionEngine');
 router.get('/:doctype/:id/versions', async (req, res, next) => {
   try {
     const versionEngine = getVersionEngine();
-    const versions = await versionEngine.getVersions(req.params.doctype, req.params.id, req.tenantId);
+    const versions = await versionEngine.getVersions(req.params.doctype, req.params.id);
     res.json({ success: true, data: versions });
   } catch (error) {
     next(error);
@@ -350,7 +360,7 @@ router.get('/:doctype/:id/versions', async (req, res, next) => {
 
 /**
  * GET /api/v1/doc/:doctype/:id/versions/compare
- * Compare two versions (passed via query params v1 and v2)
+ * Compare two versions
  */
 router.get('/:doctype/:id/versions/compare', async (req, res, next) => {
   try {
@@ -359,7 +369,7 @@ router.get('/:doctype/:id/versions/compare', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'v1 and v2 query parameters are required' });
     }
     const versionEngine = getVersionEngine();
-    const comparison = await versionEngine.compareVersions(req.params.doctype, req.params.id, Number(v1), Number(v2), req.tenantId);
+    const comparison = await versionEngine.compareVersions(req.params.doctype, req.params.id, Number(v1), Number(v2));
     res.json({ success: true, data: comparison });
   } catch (error) {
     next(error);
@@ -373,7 +383,7 @@ router.get('/:doctype/:id/versions/compare', async (req, res, next) => {
 router.get('/:doctype/:id/versions/:version', async (req, res, next) => {
   try {
     const versionEngine = getVersionEngine();
-    const version = await versionEngine.getVersion(req.params.doctype, req.params.id, Number(req.params.version), req.tenantId);
+    const version = await versionEngine.getVersion(req.params.doctype, req.params.id, Number(req.params.version));
     res.json({ success: true, data: version });
   } catch (error) {
     next(error);
@@ -387,7 +397,7 @@ router.get('/:doctype/:id/versions/:version', async (req, res, next) => {
 router.post('/:doctype/:id/versions/:version/restore', async (req, res, next) => {
   try {
     const versionEngine = getVersionEngine();
-    const result = await versionEngine.restoreVersion(req.params.doctype, req.params.id, Number(req.params.version), req.tenantId, req.userId);
+    const result = await versionEngine.restoreVersion(req.params.doctype, req.params.id, Number(req.params.version), req.userId);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -403,8 +413,8 @@ router.post('/:doctype/:id/versions/:version/restore', async (req, res, next) =>
 router.get('/:doctype/:id/workflow', async (req, res, next) => {
   try {
     const wfEngine = getWorkflowEngine();
-    const user = req.user || { id: req.userId, is_system_user: true }; // Fallback
-    const transitions = await wfEngine.getAvailableTransitions(req.params.doctype, req.params.id, req.tenantId, user);
+    const user = req.user || { id: req.userId, is_system_user: true };
+    const transitions = await wfEngine.getAvailableTransitions(req.params.doctype, req.params.id, user);
     res.json({ success: true, data: { available_transitions: transitions } });
   } catch (error) {
     next(error);
@@ -418,7 +428,7 @@ router.get('/:doctype/:id/workflow', async (req, res, next) => {
 router.get('/:doctype/:id/workflow/history', async (req, res, next) => {
   try {
     const wfEngine = getWorkflowEngine();
-    const history = await wfEngine.getHistory(req.params.doctype, req.params.id, req.tenantId);
+    const history = await wfEngine.getHistory(req.params.doctype, req.params.id);
     res.json({ success: true, data: history });
   } catch (error) {
     next(error);

@@ -24,12 +24,12 @@ class WorkflowEngine {
    * In the refactored schema, sys_workflow rows ARE the transitions (one row = one transition).
    * Returns null if no transitions exist.
    */
-  async getActiveWorkflow(doctype, tenantId) {
-    const cacheKey = `framee:meta:${tenantId}:workflow:${doctype}`;
+  async getActiveWorkflow(doctype) {
+    const cacheKey = `framee:meta:workflow:${doctype}`;
     const cached = await this.cacheEngine.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+    const meta = await this.metaEngine.getDocType(doctype);
     if (!meta) return null;
 
     // In the new schema, sys_workflow holds transitions directly (from_state, to_state, action per row)
@@ -79,8 +79,8 @@ class WorkflowEngine {
   /**
    * Called on record insert to set the initial workflow state.
    */
-  async setInitialState(doctype, record, tenantId) {
-    const workflow = await this.getActiveWorkflow(doctype, tenantId);
+  async setInitialState(doctype, record) {
+    const workflow = await this.getActiveWorkflow(doctype);
     if (workflow) {
       record.status = workflow.initial_state;
     }
@@ -89,15 +89,15 @@ class WorkflowEngine {
   /**
    * Get available transitions for a specific document and user.
    */
-  async getAvailableTransitions(doctype, docId, tenantId, user) {
-    const workflow = await this.getActiveWorkflow(doctype, tenantId);
+  async getAvailableTransitions(doctype, docId, user) {
+    const workflow = await this.getActiveWorkflow(doctype);
     if (!workflow) return [];
 
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
     const parsedId = isNaN(docId) ? docId : Number(docId);
-    const doc = await this.dbEngine.query(tableName, tenantId).where({ id: parsedId }).first();
+    const doc = await this.dbEngine.query(tableName).where({ id: parsedId }).first();
     if (!doc) throw new NotFoundError(`${doctype} not found.`);
 
     // Current state is stored in doc.status
@@ -134,15 +134,15 @@ class WorkflowEngine {
   /**
    * Execute a workflow transition.
    */
-  async executeTransition(doctype, docId, actionName, comment, tenantId, user) {
-    const workflow = await this.getActiveWorkflow(doctype, tenantId);
+  async executeTransition(doctype, docId, actionName, comment, user) {
+    const workflow = await this.getActiveWorkflow(doctype);
     if (!workflow) throw new ValidationError(`No active workflow for ${doctype}.`);
 
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+    const meta = await this.metaEngine.getDocType(doctype);
     const tableName = meta.table_name;
 
     const parsedId = isNaN(docId) ? docId : Number(docId);
-    const doc = await this.dbEngine.query(tableName, tenantId).where({ id: parsedId }).first();
+    const doc = await this.dbEngine.query(tableName).where({ id: parsedId }).first();
     if (!doc) throw new NotFoundError(`${doctype} not found.`);
 
     const currentState = doc.status || workflow.initial_state;
@@ -229,25 +229,24 @@ class WorkflowEngine {
       user_id: user.id,
       comment
     };
-    await this.eventEngine.emit(`${doctype}.workflow.transition`, payload, { tenantId, userId: user.id });
+    await this.eventEngine.emit(`${doctype}.workflow.transition`, payload, { userId: user.id });
 
-    // Invalidate workflow cache so next call picks up fresh state
-    await this.cacheEngine.del(`framee:meta:${tenantId}:workflow:${doctype}`);
-    await this.cacheEngine.del(`framee:doc:${tenantId}:${doctype}:${docId}`);
+    // Invalidate workflow cache
+    await this.cacheEngine.del(`framee:meta:workflow:${doctype}`);
 
     // Return the updated document
-    const updatedDoc = await this.dbEngine.query(tableName, tenantId).where({ id: parsedId }).first();
+    const updatedDoc = await this.dbEngine.query(tableName).where({ id: parsedId }).first();
     return updatedDoc;
   }
   
-  async getHistory(doctype, docId, tenantId) {
-    const meta = await this.metaEngine.getDocType(doctype, tenantId);
+  async getHistory(doctype, docId) {
+    const meta = await this.metaEngine.getDocType(doctype);
     if (!meta) return [];
     
     const tableName = meta.table_name;
     if (tableName === 'sys_docfield') return [];
     
-    return this.dbEngine.query(`${tableName}_logs`, tenantId, { includeDeleted: true })
+    return this.dbEngine.query(`${tableName}_logs`, { includeDeleted: true })
       .where({ doc_id: docId })
       .orderBy('created_at', 'desc');
   }

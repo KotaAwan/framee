@@ -54,34 +54,23 @@ class DatabaseEngine {
   }
 
   /**
-   * Returns a Knex query builder pre-scoped to the given tenant.
-   * This is the primary method that should be used for ALL queries
-   * targeting `dt_*` and `sys_*` tables to guarantee tenant isolation.
+   * Returns a Knex query builder for the given table.
+   * This is the primary method for ALL queries targeting `dt_*` and `sys_*` tables.
+   * Multi-tenancy is not used — no tenant scoping is applied.
    * 
    * @param {string} table - The table name to query
-   * @param {string} tenantId - The tenant ID to scope the query to
-   * @param {object} [options] - Options like transaction or includeDeleted
+   * @param {object} [options] - Options like includeDeleted
    * @returns {import('knex').Knex.QueryBuilder}
    */
-  query(table, tenantId, options = {}) {
+  query(table, options = {}) {
     if (!this.db) {
       throw new DatabaseError('DatabaseEngine is not initialized.');
     }
-    // tenantId is deprecated in schema but kept in signature for compatibility if needed elsewhere
-    // if (!tenantId) {
-    //   throw new DatabaseError(`Tenant ID is required for querying table ${table}`);
-    // }
 
     let qb = this.db(table);
 
-    // Apply transaction if provided
-    if (options.trx) {
-      qb = qb.transacting(options.trx);
-    }
-
     // Apply soft delete filter by default
     if (!options.includeDeleted) {
-      // Assuming 'status' is a standard column
       qb = qb.whereNot('status', 'Deleted');
     }
 
@@ -89,8 +78,7 @@ class DatabaseEngine {
   }
 
   /**
-   * Provides direct access to Knex for extremely rare global operations.
-   * WARNING: Bypasses tenant isolation. Do not use for standard logic.
+   * Provides direct access to Knex for raw operations (e.g. transactions, migrations).
    */
   getRawConnection() {
     if (!this.db) throw new DatabaseError('DatabaseEngine is not initialized.');

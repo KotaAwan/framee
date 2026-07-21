@@ -1,21 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, Bell, LogOut, Sun, Moon, ChevronDown } from 'lucide-react';
+import { Menu, Bell, LogOut, Sun, Moon, ChevronDown, User, Key, Hash } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 import Image from 'next/image';
+import { useRouter } from 'next/router';
+import Link from 'next/link';
 
 export default function Header({ sidebarOpen, setSidebarOpen }) {
+  const router = useRouter();
   const { user, logout } = useAuthStore();
   const [theme, setTheme] = useState('light');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
-    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-    setTheme(currentTheme);
+    const savedTheme = localStorage.getItem('framee_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    setTheme(savedTheme);
   }, []);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('framee_theme', newTheme);
     setTheme(newTheme);
   };
 
@@ -74,12 +79,21 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
                 <span className="text-xs text-(--color-muted) truncate">{user?.roles?.[0] || 'User'}</span>
               </div>
               <div className="py-1">
-                <button className="flex w-full items-center px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover)">
+                <button 
+                  onClick={() => { setUserMenuOpen(false); router.push('/user/profile'); }}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover) transition-colors"
+                >
+                  <User size={16} />
                   My Profile
                 </button>
-                <button className="flex w-full items-center px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover)">
-                  Settings
-                </button>
+                <Link href="/user/change-password" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover) transition-colors">
+                  <Key size={16} />
+                  Change Password
+                </Link>
+                <Link href="/user/change-pin" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 text-sm text-(--color-text) hover:bg-(--color-surface-hover) transition-colors">
+                  <Hash size={16} />
+                  Change PIN
+                </Link>
                 <div className="h-px bg-gray-100 my-1"></div>
                 <button 
                   onClick={logout}

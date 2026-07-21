@@ -17,17 +17,17 @@ class PermissionEngine {
     this.cacheEngine = Container.resolve('CacheEngine');
   }
 
-  _getCacheKey(tenantId, userId) {
-    return `${CACHE_PREFIX}:${tenantId}:${userId}`;
+  _getCacheKey(userId) {
+    return `${CACHE_PREFIX}:${userId}`;
   }
 
   /**
    * Fetches and compiles all permissions for a given user from the DB.
    * This flattens roles and merges them additively.
    */
-  async _compilePermissions(userId, tenantId) {
+  async _compilePermissions(userId) {
     // 0. Check if user is system user
-    const user = await this.dbEngine.query('sys_user', tenantId)
+    const user = await this.dbEngine.query('sys_user')
       .where({ id: userId }).first();
 
     if (user && user.is_system_user) {
@@ -35,7 +35,7 @@ class PermissionEngine {
     }
 
     // 1. Get user roles
-    const userRoles = await this.dbEngine.query('sys_user_role', tenantId, { includeDeleted: true })
+    const userRoles = await this.dbEngine.query('sys_user_role', { includeDeleted: true })
       .where({ user_id: userId })
       .select('role_id');
 
@@ -47,7 +47,7 @@ class PermissionEngine {
     }
 
     // 2. Check if user is System Manager
-    const roles = await this.dbEngine.query('sys_role', tenantId)
+    const roles = await this.dbEngine.query('sys_role')
       .whereIn('id', roleIds)
       .select('name', 'is_system_role');
 
@@ -59,7 +59,7 @@ class PermissionEngine {
     }
 
     // 3. Fetch permissions for these roles
-    const permissions = await this.dbEngine.query('sys_permission', tenantId)
+    const permissions = await this.dbEngine.query('sys_permission')
       .whereIn('role_id', roleIds);
 
     // 4. Merge additively per DocType
@@ -95,17 +95,17 @@ class PermissionEngine {
   /**
    * Retrieves compiled permission set (from cache or DB).
    */
-  async getPermissions(userId, tenantId) {
+  async getPermissions(userId) {
     if (userId === 'system-manager-mock-id') {
       return { isSystemManager: true, doctypes: {} };
     }
 
-    const cacheKey = this._getCacheKey(tenantId, userId);
+    const cacheKey = this._getCacheKey(userId);
     let permSet = await this.cacheEngine.get(cacheKey);
 
     if (!permSet) {
       logger.debug(`Permission Cache MISS for User ${userId}`);
-      permSet = await this._compilePermissions(userId, tenantId);
+      permSet = await this._compilePermissions(userId);
       await this.cacheEngine.set(cacheKey, permSet, CACHE_TTL);
     }
 
@@ -115,8 +115,8 @@ class PermissionEngine {
   /**
    * Primary method to check if a user can perform an action on a DocType.
    */
-  async can(userId, action, doctype, tenantId, doc = null) {
-    const permSet = await this.getPermissions(userId, tenantId);
+  async can(userId, action, doctype, doc = null) {
+    const permSet = await this.getPermissions(userId);
 
     if (permSet.isSystemManager) {
       return true;
@@ -146,7 +146,6 @@ class PermissionEngine {
 
     // Check conditions if doc is provided
     if (doc && docPerm.conditions && docPerm.conditions.length > 0) {
-      // Must satisfy at least one condition (or all? Usually ANY condition granting access is enough for additive roles)
       const satisfiesCondition = docPerm.conditions.some(cond => doc[cond.field] === cond.value);
       if (!satisfiesCondition) return false;
     }
@@ -161,8 +160,8 @@ class PermissionEngine {
     return true;
   }
 
-  async invalidateUser(userId, tenantId) {
-    const cacheKey = this._getCacheKey(tenantId, userId);
+  async invalidateUser(userId) {
+    const cacheKey = this._getCacheKey(userId);
     await this.cacheEngine.del(cacheKey);
   }
 }

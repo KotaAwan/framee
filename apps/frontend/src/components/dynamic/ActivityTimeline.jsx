@@ -23,7 +23,7 @@ function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, 
         }
       `}</style>
 
-      <div key={`${doctype}-${recordId}-${page}`} className="divide-y divide-(--color-border)">
+      <div className="divide-y divide-(--color-border)">
         {loading && logs.length === 0 ? (
           <div className="px-5 py-6 text-sm text-(--color-muted) text-center animate-pulse">Loading activity...</div>
         ) : logs.length === 0 ? (
@@ -107,13 +107,13 @@ export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0
       setLoading(true);
       try {
         let endpoint = `/api/v1/audit`;
-        let params = { doctype, limit: 20 };
+        let params = { doctype, limit: 10 };
 
         if (recordId) {
           endpoint = `/api/v1/audit/doc/${doctype}/${recordId}`;
           params = { limit: 100 }; // Fetch all for modal
         } else {
-          params = { doctype, limit: 20, offset: (page - 1) * 20 };
+          params = { doctype, limit: 10, offset: (page - 1) * 10 };
         }
 
         const res = await apiClient.get(endpoint, { params });
@@ -128,9 +128,14 @@ export default function ActivityTimeline({ doctype, recordId, refreshTrigger = 0
             if (page === 1) {
               setLogs(fetchedLogs);
             } else {
-              setLogs(prev => [...prev, ...fetchedLogs]);
+              setLogs(prev => {
+                // Filter out any duplicates based on log.id
+                const existingIds = new Set(prev.map(l => l.id));
+                const newUniqueLogs = fetchedLogs.filter(l => !existingIds.has(l.id));
+                return [...prev, ...newUniqueLogs];
+              });
             }
-            setHasMore(fetchedLogs.length === 20);
+            setHasMore(fetchedLogs.length === 10);
           } else {
             setLogs(fetchedLogs);
             setHasMore(false);

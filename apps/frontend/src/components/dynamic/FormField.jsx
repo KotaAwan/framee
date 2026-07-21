@@ -4,7 +4,7 @@ import { Controller } from 'react-hook-form';
 import TableDocField from './TableDocField';
 import apiClient from '../../lib/api.client';
 
-export default function FormField({ field, register, control, error, readOnly }) {
+export default function FormField({ field, register, control, error, readOnly, autoCode }) {
   const { fieldname, label, fieldtype, is_required, options } = field;
   const [showPassword, setShowPassword] = useState(false);
   const [linkOptions, setLinkOptions] = useState([]);
@@ -63,12 +63,13 @@ export default function FormField({ field, register, control, error, readOnly })
       case 'Data':
       case 'Int':
       case 'Float':
+        const resolvedPlaceholder = (fieldname === 'code' && autoCode) ? autoCode : `Enter ${label}`;
         return (
           <input
             type={fieldtype === 'Data' ? 'text' : 'number'}
             {...register(fieldname)}
             className={baseInput}
-            placeholder={`Enter ${label}`}
+            placeholder={resolvedPlaceholder}
             disabled={readOnly}
           />
         );
@@ -141,9 +142,20 @@ export default function FormField({ field, register, control, error, readOnly })
               control={control}
               render={({ field: { onChange, onBlur, value, ref } }) => (
                 <select
-                  onChange={onChange}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    // If it is numeric (like language_id which is integer id), convert it to number.
+                    // Otherwise keep as string (or empty string).
+                    if (val === '') {
+                      onChange(null);
+                    } else if (/^\d+$/.test(val)) {
+                      onChange(Number(val));
+                    } else {
+                      onChange(val);
+                    }
+                  }}
                   onBlur={onBlur}
-                  value={value || ''}
+                  value={value !== undefined && value !== null ? value : ''}
                   ref={ref}
                   className={`${baseInput} appearance-none pr-8`}
                   disabled={readOnly}

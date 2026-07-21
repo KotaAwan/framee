@@ -1,5 +1,5 @@
 import express from 'express';
-import { tenantAuth } from '../middlewares/tenantAuth.js';
+import { authMiddleware } from '../middlewares/tenantAuth.js';
 import Container from '../../core/Container.js';
 import { config } from '../../config/env.js';
 
@@ -9,17 +9,11 @@ const router = express.Router();
  * GET /api/v1/workspace
  * Returns a list of all active modules and their workspace shortcuts.
  */
-/**
- * GET /api/v1/workspace
- * Returns a list of all active modules and their workspace shortcuts.
- */
-router.get('/', tenantAuth, async (req, res, next) => {
+router.get('/', authMiddleware, async (req, res, next) => {
   try {
-    const tenant_id = req.tenantId;
     const user_id = req.userId;
     const dbEngine = Container.resolve('DatabaseEngine');
     
-    // We fetch globally (tenantless setup or system tenant for now)
     const knex = dbEngine.getRawConnection();
 
     // 1. Get user roles
@@ -68,16 +62,14 @@ router.get('/', tenantAuth, async (req, res, next) => {
       .orderBy('name', 'asc');
 
     // 6. Assemble
-    // First, map each menu to its doctype and module
     const enrichedMenus = menus.map(menu => {
       const dt = doctypeMap.get(menu.doctype);
       if (!dt) return null;
-      // Get the sort_order from the first matching workspace record
       const ws = workspaces.find(w => w.menu_id === menu.id);
       return {
         id: menu.id,
         name: menu.name,
-        doctype: dt.slug, // The target URL slug for the doctype
+        doctype: dt.slug, // Target URL slug
         icon: dt.icon,
         module_id: dt.module_id,
         sort_order: ws ? ws.sort_order : 999
@@ -88,7 +80,7 @@ router.get('/', tenantAuth, async (req, res, next) => {
       return {
         id: mod.id,
         name: mod.name,
-        slug: mod.slug, // The target URL slug for the module
+        slug: mod.slug, // Target URL slug
         icon: mod.icon,
         shortcuts: enrichedMenus.filter(m => m.module_id === mod.id)
       };

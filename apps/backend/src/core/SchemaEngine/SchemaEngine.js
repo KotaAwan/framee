@@ -28,7 +28,7 @@ class SchemaEngine {
   async _handleDocTypeChange(payload, context) {
     if (!payload || !payload.name) return;
     try {
-      await this.syncTable(payload.name, context.tenant_id);
+      await this.syncTable(payload.name);
     } catch (err) {
       logger.error(`Error in SchemaEngine on DocType change for ${payload.name}:`, err);
     }
@@ -37,8 +37,7 @@ class SchemaEngine {
   async _handleDocFieldChange(payload, context) {
     if (!payload || !payload.doctype) return;
     try {
-      // Find the doctype name
-      const doctype = await this.dbEngine.query('sys_doctype', context.tenant_id)
+      const doctype = await this.dbEngine.query('sys_doctype')
         .where({ table_name: payload.doctype })
         .first();
       
@@ -46,9 +45,9 @@ class SchemaEngine {
         // Invalidate meta cache before syncing
         const CACHE_PREFIX = 'framee:meta';
         const cacheEngine = Container.resolve('CacheEngine');
-        await cacheEngine.del(`${CACHE_PREFIX}:${context.tenant_id}:${doctype.name}`);
+        await cacheEngine.del(`${CACHE_PREFIX}:${doctype.name}`);
         
-        await this.syncTable(doctype.name, context.tenant_id);
+        await this.syncTable(doctype.name);
       }
     } catch (err) {
       logger.error(`Error in SchemaEngine on DocField change for doctype ${payload.doctype}:`, err);
@@ -102,7 +101,6 @@ class SchemaEngine {
       case 'Section Break':
       case 'Column Break':
       case 'HTML':
-        // These are UI-only fields, no DB column needed
         break;
       default:
         logger.warn(`Unknown fieldtype '${fieldtype}' for field '${fieldname}'. Falling back to VARCHAR(255)`);
@@ -112,15 +110,12 @@ class SchemaEngine {
 
   /**
    * Synchronizes the physical table schema for a given DocType.
-   * If table doesn't exist, it creates it.
-   * If it exists, it alters it (adds missing columns).
-   * Note: This does NOT drop columns to prevent data loss.
    */
-  async syncTable(doctypeName, tenantId) {
-    logger.info(`Syncing table schema for DocType: ${doctypeName} (Tenant: ${tenantId})`);
+  async syncTable(doctypeName) {
+    logger.info(`Syncing table schema for DocType: ${doctypeName}`);
     
     try {
-      const meta = await this.metaEngine.getDocType(doctypeName, tenantId);
+      const meta = await this.metaEngine.getDocType(doctypeName);
       const tableName = meta.table_name;
       
       const knex = this.dbEngine.getRawConnection();
@@ -145,7 +140,6 @@ class SchemaEngine {
     await knex.schema.createTable(tableName, (table) => {
       // 1. Standard Columns
       table.uuid('id').primary();
-      table.uuid('tenant_id').notNullable();
       
       // 2. Dynamic DocFields
       for (const field of meta.fields) {
@@ -172,16 +166,15 @@ class SchemaEngine {
       table.uuid('deleted_by').nullable();
       table.string('delete_reason', 255).nullable();
 
-      // 4. Child Table Columns (Standard Frappe Pattern)
+      // 4. Child Table Columns
       table.uuid('parent_id').nullable();
       table.string('parent_doctype', 100).nullable();
       table.string('parent_field', 100).nullable();
       table.integer('idx').defaultTo(0);
 
       // 5. Indexes
-      table.index(['tenant_id'], `idx_${tableName}_tenant`);
-      table.index(['tenant_id', 'status'], `idx_${tableName}_status`);
-      table.index(['tenant_id', 'parent_id'], `idx_${tableName}_parent`);
+      table.index(['status'], `idx_${tableName}_status`);
+      table.index(['parent_id'], `idx_${tableName}_parent`);
     });
     logger.info(`Table ${tableName} created successfully.`);
   }
@@ -189,14 +182,12 @@ class SchemaEngine {
   async _alterTable(knex, tableName, meta) {
     logger.info(`Altering table (if needed): ${tableName}`);
     
-    // Get existing columns
     const columns = await knex(tableName).columnInfo();
     const existingCols = Object.keys(columns).map(c => c.toLowerCase());
     
     const uiOnlyTypes = ['Section Break', 'Column Break', 'HTML'];
 
     await knex.schema.alterTable(tableName, (table) => {
-      // Ensure child table columns exist
       if (!existingCols.includes('parent_id')) table.uuid('parent_id').nullable();
       if (!existingCols.includes('parent_doctype')) table.string('parent_doctype', 100).nullable();
       if (!existingCols.includes('parent_field')) table.string('parent_field', 100).nullable();

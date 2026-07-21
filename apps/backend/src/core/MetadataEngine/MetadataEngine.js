@@ -24,56 +24,49 @@ class MetadataEngine {
   /**
    * Gets the cache key for a specific DocType.
    */
-  _getCacheKey(tenantId, doctypeName) {
-    return `${CACHE_PREFIX}:${tenantId}:${doctypeName}`;
+  _getCacheKey(doctypeName) {
+    return `${CACHE_PREFIX}:${doctypeName}`;
   }
 
   /**
-   * Retrieves a full DocType metadata (including fields) by its name and tenant ID.
+   * Retrieves a full DocType metadata (including fields) by its name.
    * Checks Cache first, falls back to DB, and repopulates cache.
    * 
    * @param {string} name - DocType name
-   * @param {string} tenantId - Tenant ID
    * @returns {Promise<Object>}
    */
-  async getDocType(name, tenantId) {
-    const cacheKey = this._getCacheKey(tenantId, name);
+  async getDocType(name) {
+    const cacheKey = this._getCacheKey(name);
 
     // 1. Try Cache
     if (config.app.env !== 'development') {
       const cachedMeta = await this.cacheEngine.get(cacheKey);
       if (cachedMeta) {
-        logger.debug(`Metadata Cache HIT for ${name} (Tenant: ${tenantId})`);
+        logger.debug(`Metadata Cache HIT for ${name}`);
         return cachedMeta;
       }
     }
 
-    logger.debug(`Metadata Cache MISS for ${name} (Tenant: ${tenantId}). Loading from DB...`);
-
-    const SYSTEM_TENANT = config.app.systemTenantId;
-    const isSystemDocType = name.startsWith('sys_');
-    const queryTenantId = isSystemDocType ? SYSTEM_TENANT : tenantId;
+    logger.debug(`Metadata Cache MISS for ${name}. Loading from DB...`);
 
     // 2. Fetch from DB
-    // Fetch DocType
-    // The parameter `name` could be a table_name (like sys_user) or an ID (for internally linked stuff), but usually it's table_name.
     let doctype;
     if (typeof name === 'number' || !isNaN(Number(name))) {
-      doctype = await this.dbEngine.query('sys_doctype', queryTenantId)
+      doctype = await this.dbEngine.query('sys_doctype')
         .where({ id: Number(name), status: 'Saved' })
         .first();
     } else {
-      doctype = await this.dbEngine.query('sys_doctype', queryTenantId)
+      doctype = await this.dbEngine.query('sys_doctype')
         .where({ table_name: name, status: 'Saved' })
         .first();
     }
 
     if (!doctype) {
-      throw new NotFoundError(`DocType '${name}' not found or inactive for this tenant.`);
+      throw new NotFoundError(`DocType '${name}' not found or inactive.`);
     }
 
     // Fetch Fields
-    const fields = await this.dbEngine.query('sys_docfield', queryTenantId, { includeDeleted: true })
+    const fields = await this.dbEngine.query('sys_docfield', { includeDeleted: true })
       .where({ doctype: doctype.table_name })
       .orderBy('sort_order', 'asc');
 
@@ -102,36 +95,30 @@ class MetadataEngine {
    * Called by EventEngine when a DocType or DocField is saved/deleted.
    * 
    * @param {string} name 
-   * @param {string} tenantId 
    */
-  async invalidate(name, tenantId) {
-    const cacheKey = this._getCacheKey(tenantId, name);
+  async invalidate(name) {
+    const cacheKey = this._getCacheKey(name);
     await this.cacheEngine.del(cacheKey);
-    logger.info(`Invalidated metadata cache for ${name} (Tenant: ${tenantId})`);
+    logger.info(`Invalidated metadata cache for ${name}`);
   }
 
   /**
-   * Gets all active DocTypes for a tenant (without fields).
+   * Gets all active DocTypes (without fields).
    * Used for generating routes or sidebar menus.
    * 
-   * @param {string} tenantId 
    * @returns {Promise<Array>}
    */
-  async getAllDocTypes(tenantId) {
-    const listCacheKey = `${CACHE_PREFIX}:${tenantId}:__all_list`;
+  async getAllDocTypes() {
+    const listCacheKey = `${CACHE_PREFIX}:__all_list`;
     
     if (config.app.env !== 'development') {
       const cachedList = await this.cacheEngine.get(listCacheKey);
       if (cachedList) return cachedList;
     }
 
-    const SYSTEM_TENANT = config.app.systemTenantId;
-    
-    // Fetch both system doctypes and tenant-specific doctypes
-    const doctypes = await this.dbEngine.getRawConnection()('sys_doctype')
-      .whereIn('tenant_id', [SYSTEM_TENANT, tenantId])
-      .where({ is_active: true, is_deleted: false })
-      .select('id', 'name', 'label', 'module_id', 'is_submittable');
+    const doctypes = await this.dbEngine.query('sys_doctype')
+      .where({ status: 'Saved' })
+      .select('id', 'name', 'table_name', 'module_id', 'icon');
 
     if (config.app.env !== 'development') {
       await this.cacheEngine.set(listCacheKey, doctypes, CACHE_TTL);
