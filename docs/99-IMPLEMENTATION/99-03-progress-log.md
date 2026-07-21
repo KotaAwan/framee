@@ -48,3 +48,16 @@ This document records the modifications, refactorings, and UI enhancements imple
   * Filtered out `'id'` from the dynamic mapping in `DynamicList.jsx` to prevent the ID column from rendering twice (since it's prepended manually).
   * Fixed `visibleColumns` state initialization to strictly read `in_list === 1` from the database so only `'id'`, `'code'`, and `'name'` are checked by default on `sys_user`.
   * **Link Names Resolution**: Fixed an issue in `CRUDEngine.js` link-resolving process where arrays inside `options` caused metadata lookups to fail. Link values (like `language_id`) now successfully display their text values (e.g., `English` or `Indonesian`) instead of raw IDs, and display **only the name** (removing the `"code - name"` combination).
+
+## 7. User Profile, Authentication Management & Theme Persistence
+* **Goal**: Refine user profile layout, implement Change Password/PIN features, fix workflow bugs, and ensure UI themes persist.
+* **Backend & Workflow Fixes**:
+  * **Workflow Transition Bug**: Fixed an issue where records (like `sys_user`) could not be unlocked. Corrected the method call in `/api/routes/doc.js` from `wfEngine.transition` to `wfEngine.executeTransition`.
+  * **Auth Endpoints**: Implemented `PUT /api/v1/user/change-password` and `PUT /api/v1/user/change-pin`. Ensured password validation uses `bcryptjs`.
+  * **Audit Logging**: Removed invalid `updated_at` column references for `sys_user` updates. Replaced it with `EventEngine.emit('sys_user.updated')` so that password/PIN changes are cleanly recorded in the audit logs.
+* **Frontend & UI Improvements**:
+  * **Profile Layout**: Refactored `/user/profile` to use a 1-column full-width form layout, centered the avatar, and moved the primary "Update" action button to the top right of the page.
+  * **Change Password & PIN Pages**: Created `/user/change-password` and `/user/change-pin` pages adopting the new profile layout. Both require the `Current Password` for security verification and feature toggleable (show/hide) password inputs.
+  * **Header Menu**: Updated the User dropdown menu to properly route to My Profile, Change Password, and Change PIN, accompanied by intuitive Lucide icons (`User`, `Key`, `Hash`).
+  * **High-Contrast Alerts**: Redesigned success and error alert banners across user management pages to use highly visible solid red/green backgrounds with white text. Prevented Next.js unhandled runtime overlays from bleeding through into the UI by refining error catching.
+  * **Dark Mode Persistence**: Shifted Dark/Light mode tracking to `localStorage`. Removed a hardcoded theme-reset script in `_app.js` and injected a pre-hydration script into `_document.js` to eliminate theme flashing during page reloads.
