@@ -4,7 +4,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import clsx from 'clsx';
 import DesignerField from './DesignerField';
 
-export default function DesignerColumn({ fieldname, col, tab, section, register, readOnly, handleDelete, handleAddField }) {
+export default function DesignerColumn({ fieldname, col, tab, section, register, readOnly, handleDelete, handleAddField, handleEdit }) {
   const { t } = useTranslation();
   
   const isVirtualCol = tab.columns.length === 1 && col.id && col.id.toString().startsWith('col-virt-');
@@ -41,6 +41,7 @@ export default function DesignerColumn({ fieldname, col, tab, section, register,
             register={register}
             readOnly={readOnly}
             handleDelete={handleDelete}
+            handleEdit={handleEdit}
           />
         ))}
       </div>

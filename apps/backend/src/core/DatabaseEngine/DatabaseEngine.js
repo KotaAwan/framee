@@ -69,8 +69,9 @@ class DatabaseEngine {
 
     let qb = this.db(table);
 
-    // Apply soft delete filter by default
-    if (!options.includeDeleted) {
+    // Apply soft delete filter by default for tables with status tracking
+    const tablesWithoutStatus = ['sys_docfield', 'sys_audit_log', 'sys_event_log'];
+    if (!options.includeDeleted && !tablesWithoutStatus.includes(table)) {
       qb = qb.whereNot('status', 'Deleted');
     }
 

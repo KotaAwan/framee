@@ -9,18 +9,18 @@ export default function FormBuilderField({ fieldname, label, options, control, r
   const [activeTab, setActiveTab] = useState('design'); // 'design' or 'setup'
 
   return (
-    <div className="w-full bg-white shadow sm:rounded-lg mb-6 border border-gray-200 overflow-hidden mt-6">
+    <div className="w-full bg-(--color-surface) shadow-sm rounded-lg border border-(--color-border) overflow-hidden mt-2">
       {/* Tabs Header */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-(--color-border) bg-(--color-section-header-bg)">
         <nav className="-mb-px flex" aria-label="Tabs">
           <button
             type="button"
             onClick={() => setActiveTab('design')}
             className={clsx(
-              'w-1/2 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors',
+              'w-1/2 py-3 px-6 text-center border-b-2 font-semibold text-sm transition-colors',
               activeTab === 'design'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-(--color-primary) text-(--color-primary)'
+                : 'border-transparent text-(--color-muted) hover:text-(--color-text) hover:border-(--color-border)'
             )}
           >
             {t('Form Design')}
@@ -29,10 +29,10 @@ export default function FormBuilderField({ fieldname, label, options, control, r
             type="button"
             onClick={() => setActiveTab('setup')}
             className={clsx(
-              'w-1/2 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors',
+              'w-1/2 py-3 px-6 text-center border-b-2 font-semibold text-sm transition-colors',
               activeTab === 'setup'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-(--color-primary) text-(--color-primary)'
+                : 'border-transparent text-(--color-muted) hover:text-(--color-text) hover:border-(--color-border)'
             )}
           >
             {t('Fields Setup')}
@@ -41,9 +41,9 @@ export default function FormBuilderField({ fieldname, label, options, control, r
       </div>
 
       {/* Tab Content */}
-      <div className="bg-gray-50">
+      <div className="bg-(--color-surface)">
         {activeTab === 'design' && (
-          <div className="w-full p-6 sm:p-4">
+          <div className="w-full p-4">
             <FormDesigner 
               fieldname={fieldname}
               control={control}

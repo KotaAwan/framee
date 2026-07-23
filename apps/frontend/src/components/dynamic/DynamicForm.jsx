@@ -416,7 +416,8 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
           <form id="dynamic-form" onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
             {Object.entries(sections).map(([sectionName, fields]) => (
               fields.length > 0 && (
-                <div key={sectionName} className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden">
+                <React.Fragment key={sectionName}>
+                <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden">
                   <div className="px-5 pt-4 pb-3 border-b border-(--color-border) bg-(--color-section-header-bg) flex items-center justify-between">
                     <h3 className="font-semibold text-(--color-text) text-base">{t(sectionName, sectionName)}</h3>
                     {(sectionName === 'General' || sectionName === 'Basic Details') && (
@@ -427,7 +428,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                   </div>
                   <div className="px-5 pt-5 pb-8">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-x-6 gap-y-4">
-                      {fields.map(field => {
+                      {fields.filter(f => f.fieldtype !== 'Table').map(field => {
                         // Skip password fields in readOnly/modal mode
                         if (readOnly && field.fieldtype === 'Password') {
                           return null;
@@ -486,6 +487,25 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                     </div>
                   </div>
                 </div>
+
+                {/* Render Table / FormBuilder fields outside Section grid card */}
+                {fields.filter(f => f.fieldtype === 'Table').map(field => {
+                  const isFieldReadOnly = !isEditable || (field.is_read_only === 1 || field.is_read_only === true);
+                  return (
+                    <div key={field.fieldname} className="mt-6">
+                      <FormField 
+                        doctype={doctype}
+                        field={field} 
+                        register={register} 
+                        control={control}
+                        error={errors[field.fieldname]} 
+                        readOnly={isFieldReadOnly}
+                        autoCode={meta?.auto_code}
+                      />
+                    </div>
+                  );
+                })}
+                </React.Fragment>
               )
             ))}
           </form>

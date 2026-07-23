@@ -6,7 +6,7 @@ function IndexPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/dashboard/welcome');
+    router.replace('/dashboard/sys_welcome');
   }, [router]);
 
   return (

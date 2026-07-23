@@ -313,6 +313,7 @@ export async function seed(knex) {
     { fieldname: 'auto_code', label: 'Auto Code', fieldtype: 'Data' },
     { fieldname: 'is_tree', label: 'Is Tree', fieldtype: 'Check' },
     { fieldname: 'is_single', label: 'Is Single', fieldtype: 'Check' },
+    { fieldname: 'fields', label: 'Fields', fieldtype: 'Table', options: 'sys_docfield' },
     { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
     { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
   ]);

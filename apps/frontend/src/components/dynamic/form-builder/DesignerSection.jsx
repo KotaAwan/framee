@@ -17,7 +17,8 @@ export default function DesignerSection({
   handleAddSection,
   fieldsLength,
   activeTabIds,
-  setActiveTabIds
+  setActiveTabIds,
+  handleEdit
 }) {
   const { t } = useTranslation();
 
@@ -25,111 +26,138 @@ export default function DesignerSection({
   const isVirtualSection = section.id && section.id.toString().startsWith('virtual-section');
 
   return (
-    <div className="bg-gray-50 border border-dashed border-gray-300 p-4 rounded-md relative group mt-8">
-      
-      {!readOnly && section._originalIndex >= 0 && (
-        <button 
-          type="button"
-          onClick={() => handleDelete(section._originalIndex)}
-          className="absolute top-0 right-0 text-xs text-red-500 hover:text-red-700 font-medium leading-none mb-0 px-3 py-1.5 bg-gray-50 border border-dashed border-gray-300 border-t-0 border-r-0 rounded-bl-md hover:bg-red-50 translate-y-[1px] transition-colors z-10"
-        >
-          {t('Delete Section')}
-        </button>
-      )}
-
-      <div className="flex items-center justify-between border-b border-gray-200 pb-2 mb-4">
-        <div className="flex items-center w-full">
-          <span className="cursor-move mr-2 text-gray-400">
+    <div className="bg-(--color-surface) border border-dashed border-(--color-border) p-4 rounded-md relative my-4">
+      {/* 1. Header Bar: Add Header (left) & Delete Section (right) */}
+      <div className="flex items-center justify-between pb-3 border-b border-(--color-border)">
+        <div className="flex items-center gap-2">
+          <span className="cursor-move text-(--color-muted)">
             <GripVertical size={16} />
           </span>
-          
-          {(!readOnly && !isVirtualSection) && (
-            <div className="flex items-center w-full">
+          {!readOnly && !isVirtualSection && (
+            <>
               {!hasHeader && (
-                <button type="button" onClick={() => toggleSectionHeader(section)} className="text-xs text-blue-600 hover:text-blue-800 font-medium mr-2">
+                <button 
+                  type="button" 
+                  onClick={() => toggleSectionHeader(section)} 
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+                >
                   {t('Add Header')}
                 </button>
               )}
               {hasHeader && (
-                <>
+                <div className="flex items-center gap-2 max-w-md sm:max-w-xl">
                   <input 
                     type="text" 
-                    className="bg-transparent border-0 border-b border-dashed border-gray-300 focus:ring-0 focus:border-blue-500 p-0 text-lg font-semibold w-full text-blue-600" 
+                    className="bg-transparent border-0 border-b border-dashed border-(--color-border) focus:ring-0 focus:border-blue-500 p-0 text-sm font-semibold w-full text-blue-600 dark:text-blue-400" 
                     placeholder={t('Section Name')}
                     {...register(`${fieldname}.${section._originalIndex}.label`)}
                   />
-                  <button type="button" onClick={() => toggleSectionHeader(section)} className="ml-3 text-gray-400 hover:text-red-500" title={t('Remove Header')}>
+                  <button type="button" onClick={() => toggleSectionHeader(section)} className="text-(--color-muted) hover:text-red-500 shrink-0" title={t('Remove Header')}>
                     <Trash2 size={16} />
                   </button>
-                </>
+                </div>
               )}
-            </div>
-          )}
-          {isVirtualSection && !readOnly && (
-            <button type="button" onClick={() => handleAddSection()} className="text-xs text-blue-600 hover:text-blue-800 font-medium ml-1">
-              {t('Add Header')}
-            </button>
-          )}
-          {readOnly && !isVirtualSection && (
-            <span className="text-lg font-semibold text-blue-600 w-full">{section.label || t('Section')}</span>
+            </>
           )}
         </div>
+
+        {!readOnly && section._originalIndex >= 0 && (
+          <button 
+            type="button"
+            onClick={() => handleDelete(section._originalIndex)}
+            className="text-xs text-red-500 hover:text-red-700 font-medium px-3 py-1 bg-red-50 dark:bg-red-950/40 rounded border border-dashed border-red-200 dark:border-red-800 transition-colors"
+          >
+            {t('Delete Section')}
+          </button>
+        )}
       </div>
 
-      <div className="design-tabs-container">
-        <div className="border-b border-gray-200 mb-4 flex items-center justify-between overflow-x-auto">
-          <div className="flex items-center">
-            {section.tabs.map((tab, tIdx) => {
-              const isVirtualTab = tab.id && tab.id.toString().startsWith('virtual-tab');
-              const isActive = activeTabIds[section.id] ? activeTabIds[section.id] === tab.id : tIdx === 0;
-              
-              if (section.tabs.length === 1 && isVirtualTab) return null;
+      {/* 2. Add Tab Row & Tab Headers */}
+      <div className="border-b border-(--color-border) pt-2 pb-1 flex items-center justify-between overflow-x-auto">
+        <div className="flex items-center gap-1">
+          {section.tabs.map((tab, tIdx) => {
+            const isVirtualTab = tab.id && tab.id.toString().startsWith('virtual-tab');
+            const isActive = activeTabIds[section.id] ? activeTabIds[section.id] === tab.id : tIdx === 0;
+            
+            if (section.tabs.length === 1 && isVirtualTab) return null;
 
-              return (
-                <div 
-                  key={`tab_${tIdx}`}
-                  className={clsx(
-                    "flex-shrink-0 cursor-pointer flex items-center px-4 py-2 border-b-2 font-medium text-sm",
-                    isActive ? "border-purple-500 text-purple-600" : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  )}
-                  onClick={() => setActiveTabIds(prev => ({...prev, [section.id]: tab.id}))}
-                >
-                  <span className="cursor-move mr-2 text-gray-400">
-                    <GripVertical size={16} />
-                  </span>
-                  {!readOnly && !isVirtualTab ? (
-                    <input 
-                      type="text" 
-                      className="bg-transparent border-0 border-b border-dashed border-gray-300 focus:ring-0 focus:border-purple-500 p-0 text-sm font-bold w-32" 
-                      placeholder={t('Tab Name')}
-                      onClick={e => e.stopPropagation()}
-                      {...register(`${fieldname}.${tab._originalIndex}.label`)}
-                    />
-                  ) : (
-                    <span className="text-sm font-bold">{tab.label || t('Tab')}</span>
-                  )}
-                  {!readOnly && !isVirtualTab && (
-                    <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(tab._originalIndex); }} className="ml-2 text-gray-400 hover:text-red-500">
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {!readOnly && (
-            <div className="px-4">
-              <button 
-                type="button" 
-                onClick={() => handleAddTab(section._originalIndex >= 0 ? section._originalIndex : fieldsLength - 1)} 
-                className="text-xs text-purple-600 hover:text-purple-800 font-medium"
+            return (
+              <div 
+                key={`tab_${tIdx}`}
+                className={clsx(
+                  "flex-shrink-0 cursor-pointer flex items-center px-3 py-1.5 border-b-2 font-medium text-xs rounded-t-md transition-colors",
+                  isActive ? "border-purple-500 text-purple-600 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-950/40" : "border-transparent text-(--color-muted) hover:text-(--color-text)"
+                )}
+                onClick={() => setActiveTabIds(prev => ({...prev, [section.id]: tab.id}))}
               >
-                {t('Add Tab')}
-              </button>
-            </div>
-          )}
+                <span className="cursor-move mr-1.5 text-(--color-muted)">
+                  <GripVertical size={14} />
+                </span>
+                {!readOnly && !isVirtualTab ? (
+                  <input 
+                    type="text" 
+                    className="bg-transparent border-0 border-b border-dashed border-(--color-border) focus:ring-0 focus:border-purple-500 p-0 text-xs font-bold w-24 text-purple-700 dark:text-purple-300" 
+                    placeholder={t('Tab Name')}
+                    onClick={e => e.stopPropagation()}
+                    {...register(`${fieldname}.${tab._originalIndex}.label`)}
+                  />
+                ) : (
+                  <span className="text-xs font-bold">{tab.label || t('Tab')}</span>
+                )}
+                {!readOnly && !isVirtualTab && (
+                  <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(tab._originalIndex); }} className="ml-2 text-(--color-muted) hover:text-red-500">
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
 
+        {!readOnly && (
+          <div className="px-2 shrink-0">
+            <button 
+              type="button" 
+              onClick={() => handleAddTab(section._originalIndex >= 0 ? section._originalIndex : fieldsLength - 1)} 
+              className="text-xs text-purple-600 dark:text-purple-400 hover:underline font-semibold"
+            >
+              {t('Add Tab')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 3. Add Column Row (Right Aligned) */}
+      {!readOnly && (
+        <div className="flex justify-end pt-2 pb-1">
+          <button 
+            type="button" 
+            onClick={() => {
+              const activeTabId = activeTabIds[section.id];
+              const activeTab = section.tabs.find(t => t.id === activeTabId) || section.tabs[0];
+              
+              let targetIndex = section._originalIndex >= 0 ? section._originalIndex : fieldsLength - 1;
+              if (activeTab) {
+                let lastIndex = activeTab._originalIndex;
+                activeTab.columns.forEach(c => {
+                  if (c._originalIndex > lastIndex) lastIndex = c._originalIndex;
+                  c.fields.forEach(f => {
+                    if (f._originalIndex > lastIndex) lastIndex = f._originalIndex;
+                  });
+                });
+                if (lastIndex >= 0) targetIndex = lastIndex;
+              }
+              handleAddColumn(targetIndex);
+            }} 
+            className="text-xs text-green-600 dark:text-green-400 hover:underline font-semibold"
+          >
+            {t('Add Column')}
+          </button>
+        </div>
+      )}
+
+      {/* 4. Tab Content & Fields Container */}
+      <div className="mt-1">
         <div className="relative">
           {section.tabs.map((tab, tIdx) => {
             const isActive = activeTabIds[section.id] ? activeTabIds[section.id] === tab.id : tIdx === 0;
@@ -146,11 +174,25 @@ export default function DesignerSection({
                 handleDelete={handleDelete}
                 handleAddColumn={handleAddColumn}
                 handleAddField={handleAddField}
+                handleEdit={handleEdit}
               />
             );
           })}
         </div>
       </div>
+
+      {/* 5. Add Field Box (Full Width Centered Dashed Box) */}
+      {!readOnly && (
+        <div className="mt-4 pt-2">
+          <button 
+            type="button" 
+            onClick={() => handleAddField(section._originalIndex >= 0 ? section._originalIndex : fieldsLength - 1)} 
+            className="w-full py-2.5 border border-dashed border-(--color-border) rounded-md text-xs text-(--color-muted) font-medium hover:text-(--color-text) hover:bg-(--color-surface-hover) transition-all text-center block"
+          >
+            + {t('Add Field')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

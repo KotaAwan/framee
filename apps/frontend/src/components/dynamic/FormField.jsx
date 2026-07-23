@@ -39,8 +39,8 @@ export default function FormField({ doctype, field, register, control, error, re
 
   // If it's a Table field, render the subgrid directly
   if (fieldtype === 'Table') {
-    // Specialized Form Builder for sys_doctype
-    if (doctype === 'sys_doctype' && fieldname === 'fields') {
+    // Specialized Form Builder for sys_doctype / doctype
+    if ((doctype === 'sys_doctype' || doctype === 'doctype') && fieldname === 'fields') {
       return (
         <FormBuilderField
           fieldname={fieldname}

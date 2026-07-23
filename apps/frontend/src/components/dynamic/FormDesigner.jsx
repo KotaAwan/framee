@@ -3,16 +3,35 @@ import { useFieldArray } from 'react-hook-form';
 import { useTranslation } from '@/hooks/useTranslation';
 import { DragDropContext } from '@hello-pangea/dnd';
 import DesignerSection from './form-builder/DesignerSection';
+import FieldSettingsModal from './FieldSettingsModal';
 
 export default function FormDesigner({ fieldname, control, register, readOnly }) {
   const { t } = useTranslation();
   const [activeTabIds, setActiveTabIds] = useState({});
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingIndex, setEditingIndex] = useState(null);
   
   const { fields, append, remove, move, insert, update } = useFieldArray({
     control,
     name: fieldname,
     keyName: '_ui_id'
   });
+
+  const handleEdit = (index) => {
+    if (index >= 0 && !readOnly) {
+      setEditingIndex(index);
+      setIsModalOpen(true);
+    }
+  };
+
+  const handleSaveModal = (data) => {
+    if (editingIndex !== null) {
+      update(editingIndex, {
+        ...fields[editingIndex],
+        ...data
+      });
+    }
+  };
 
   const structure = useMemo(() => {
     const layout = [];
@@ -70,14 +89,15 @@ export default function FormDesigner({ fieldname, control, register, readOnly })
   const handleAddSection = () => {
     append({
       id: crypto.randomUUID(),
-      fieldname: `layout_${Math.random().toString(36).substring(2, 7)}`,
-      label: 'New Section',
+      fieldname: `section_${Math.random().toString(36).substring(2, 7)}`,
+      label: '',
       fieldtype: 'Section Break'
     });
   };
   
   const handleAddTab = (sectionAbsIndex) => {
-    insert(sectionAbsIndex + 1, {
+    const targetIdx = sectionAbsIndex >= 0 ? sectionAbsIndex + 1 : fields.length;
+    insert(targetIdx, {
       id: crypto.randomUUID(),
       fieldname: `tab_${Math.random().toString(36).substring(2, 7)}`,
       label: 'New Tab',
@@ -86,16 +106,18 @@ export default function FormDesigner({ fieldname, control, register, readOnly })
   };
 
   const handleAddColumn = (tabAbsIndex) => {
-    insert(tabAbsIndex + 1, {
+    const targetIdx = tabAbsIndex >= 0 ? tabAbsIndex + 1 : fields.length;
+    insert(targetIdx, {
       id: crypto.randomUUID(),
       fieldname: `col_${Math.random().toString(36).substring(2, 7)}`,
-      label: 'Column',
+      label: 'New Column',
       fieldtype: 'Column Break'
     });
   };
 
   const handleAddField = (colAbsIndex) => {
-    insert(colAbsIndex + 1, {
+    const targetIdx = colAbsIndex >= 0 ? colAbsIndex + 1 : fields.length;
+    insert(targetIdx, {
       id: crypto.randomUUID(),
       fieldname: `field_${Math.random().toString(36).substring(2, 7)}`,
       label: 'New Field',
@@ -125,10 +147,10 @@ export default function FormDesigner({ fieldname, control, register, readOnly })
 
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="w-full flex flex-col gap-2 bg-white p-2 rounded-lg border border-gray-200 min-h-[40px]">
+      <div className="w-full flex flex-col gap-2 min-h-[40px]">
         {structure.length === 0 && (
-          <div className="text-center p-8 border border-dashed border-gray-200 rounded-lg bg-gray-50">
-            <p className="text-gray-500 mb-4">{t('No fields designed yet.')}</p>
+          <div className="text-center p-8 border border-dashed border-(--color-border) rounded-lg bg-(--color-surface-hover)">
+            <p className="text-(--color-muted) mb-4">{t('No fields designed yet.')}</p>
           </div>
         )}
 
@@ -149,6 +171,7 @@ export default function FormDesigner({ fieldname, control, register, readOnly })
               fieldsLength={fields.length}
               activeTabIds={activeTabIds}
               setActiveTabIds={setActiveTabIds}
+              handleEdit={handleEdit}
             />
           ))}
         </div>
@@ -164,6 +187,13 @@ export default function FormDesigner({ fieldname, control, register, readOnly })
             </button>
           </div>
         )}
+
+        <FieldSettingsModal 
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          initialData={editingIndex !== null ? fields[editingIndex] : null}
+          onSave={handleSaveModal}
+        />
       </div>
     </DragDropContext>
   );

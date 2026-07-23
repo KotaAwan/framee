@@ -97,8 +97,8 @@ export default function ChildFormModal({
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-(--color-border) bg-(--color-section-header-bg)">
-          <h2 className="text-lg font-semibold text-(--color-text)">
-            {initialData ? t('Edit') : t('Add')} {meta ? t(meta.label || meta.name) : childDocType}
+          <h2 className="text-lg font-bold text-(--color-text)">
+            {childDocType === 'sys_docfield' ? t('Field Settings') : `${initialData ? t('Edit') : t('Add')} ${meta ? t(meta.label || meta.name) : childDocType}`}
           </h2>
           <button 
             type="button" 
@@ -232,10 +232,9 @@ export default function ChildFormModal({
           <button
             type="submit"
             form="child-form"
-            className="px-4 py-2 text-sm font-medium text-white bg-(--color-primary) rounded-md hover:bg-(--color-primary-hover) shadow-sm transition-colors flex items-center gap-2"
+            className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 shadow-sm transition-colors flex items-center gap-2"
           >
-            <Icon name="Check" size={16} />
-            {t('Save')}
+            {childDocType === 'sys_docfield' ? t('Done') : t('Save')}
           </button>
         </div>
         

@@ -2,7 +2,7 @@ import React from 'react';
 import { GripVertical, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 
-export default function DesignerField({ fieldname, field, register, readOnly, handleDelete }) {
+export default function DesignerField({ fieldname, field, register, readOnly, handleDelete, handleEdit }) {
   const { t } = useTranslation();
   
   return (
@@ -25,10 +25,14 @@ export default function DesignerField({ fieldname, field, register, readOnly, ha
           )}
         </div>
         
-        <div className="mt-2 bg-white border border-gray-300 rounded px-2 py-1.5 text-xs text-gray-500 cursor-pointer hover:border-blue-500 hover:text-blue-500 transition-colors">
+        <div 
+          onClick={() => !readOnly && handleEdit && handleEdit(field._originalIndex)}
+          className="mt-2 bg-white border border-gray-300 rounded px-2 py-1.5 text-xs text-gray-500 cursor-pointer hover:border-blue-500 hover:text-blue-600 transition-colors"
+          title={t('Click to open Field Settings')}
+        >
           <div className="flex items-center justify-between">
-            <span>{field.fieldname || 'field_name'}</span>
-            <span className="bg-gray-100 px-1.5 py-0.5 rounded text-[10px] uppercase">{field.fieldtype}</span>
+            <span className="font-mono text-gray-600">{field.fieldname || 'field_name'}</span>
+            <span className="bg-gray-100 px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold text-blue-600">{field.fieldtype}</span>
           </div>
         </div>
       </div>
