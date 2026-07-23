@@ -32,6 +32,21 @@ const hashPasswordFields = async (data) => {
 router.use(authMiddleware);
 
 /**
+ * Express param middleware to intercept 'doctype'
+ * Resolves the doctype slug (e.g. 'language') to the actual table_name ('sys_language')
+ */
+router.param('doctype', async (req, res, next, doctypeSlug) => {
+  try {
+    const metaEngine = Container.resolve('MetadataEngine');
+    const meta = await metaEngine.getDocType(doctypeSlug);
+    req.params.doctype = meta.table_name; // Overwrite with actual table name
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * Helper to remove sensitive fields from a document before sending to the client.
  */
 const sanitizeDoc = (doc) => {
@@ -109,8 +124,8 @@ router.get('/:doctype', async (req, res, next) => {
     console.log(`\n***`);
     console.log(`*** GET List Doctype: "${req.params.doctype}"`);
     const crudEngine = getCrudEngine();
-    const records = await crudEngine.getList(req.params.doctype, req.query, req.userId);
-    res.json({ success: true, data: sanitizeDoc(records) });
+    const { records, total } = await crudEngine.getList(req.params.doctype, req.query, req.userId);
+    res.json({ success: true, data: { records: sanitizeDoc(records), total } });
   } catch (error) {
     next(error);
   }
@@ -281,6 +296,40 @@ router.post('/:doctype/:id/unlock', async (req, res, next) => {
     const record = await crudEngine.unlock(req.params.doctype, req.params.id, req.userId);
     res.json({ success: true, data: record });
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/doc/:doctype/:id/activate
+ * Activate a sys_doctype (Creates the physical database table)
+ */
+router.post('/:doctype/:id/activate', async (req, res, next) => {
+  try {
+    if (req.params.doctype !== 'sys_doctype') {
+      return res.status(400).json({ success: false, message: 'Activate action is only allowed for sys_doctype' });
+    }
+    const crudEngine = getCrudEngine();
+    const dbEngine = Container.resolve('DatabaseEngine');
+    
+    // 1. Get DocType record
+    const docType = await crudEngine.get('sys_doctype', req.params.id, req.userId);
+    if (!docType) {
+      return res.status(404).json({ success: false, message: 'DocType not found' });
+    }
+
+    // 2. Get DocFields (fields) for this DocType
+    const { records: fields } = await crudEngine.getList('sys_docfield', { parent_id: req.params.id, limit: 1000 }, req.userId);
+
+    // 3. Create Physical Table
+    await dbEngine.createTableFromDocType(docType, fields);
+
+    // 4. Update status to Active
+    const updated = await crudEngine.update('sys_doctype', req.params.id, { is_active: 1, status: 'Active' }, req.userId);
+
+    res.json({ success: true, message: `Table for ${docType.name} created successfully`, data: updated });
+  } catch (error) {
+    console.error('Failed to activate doctype:', error);
     next(error);
   }
 });

@@ -7,6 +7,21 @@ const getDbEngine = () => Container.resolve('DatabaseEngine');
 
 const router = express.Router();
 
+/**
+ * Express param middleware to intercept 'doctype'
+ * Resolves the doctype slug (e.g. 'language') to the actual table_name ('sys_language')
+ */
+router.param('doctype', async (req, res, next, doctypeSlug) => {
+  try {
+    const metaEngine = Container.resolve('MetadataEngine');
+    const meta = await metaEngine.getDocType(doctypeSlug);
+    req.params.doctype = meta.table_name;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 const requireAdmin = async (req, res, next) => {
   next();
 };

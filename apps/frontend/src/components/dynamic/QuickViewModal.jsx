@@ -6,6 +6,7 @@ import apiClient from '../../lib/api.client';
 import Icon from '../ui/Icon';
 import Breadcrumb from '../layout/Breadcrumb';
 import { useAuthStore } from '../../store/auth.store';
+import { useTranslation } from '@/hooks/useTranslation';
 
 // ── Component #1: FormView (Memoized to prevent unnecessary re-renders)
 const FormView = memo(function FormView({ doctype, recordId }) {
@@ -24,6 +25,7 @@ const FormView = memo(function FormView({ doctype, recordId }) {
 // ── Component #2: FormComment (Holds its own local text state to avoid parent re-renders while typing)
 function FormComment({ onSend, sending }) {
   const [comment, setComment] = useState('');
+  const { t } = useTranslation();
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -38,7 +40,7 @@ function FormComment({ onSend, sending }) {
         type="text"
         value={comment}
         onChange={(e) => setComment(e.target.value)}
-        placeholder="Write a comment..."
+        placeholder={t("Write a comment...", "Write a comment...")}
         className="flex-1 px-4 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-lg text-sm focus:outline-none focus:border-(--color-primary) transition-all placeholder:text-(--color-input-placeholder)"
       />
       <button
@@ -46,7 +48,7 @@ function FormComment({ onSend, sending }) {
         disabled={sending || !comment.trim()}
         className="flex items-center gap-1.5 bg-(--color-primary) text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors whitespace-nowrap"
       >
-        <Send size={14} /> Send
+        <Send size={14} /> {t('Send', 'Send')}
       </button>
     </form>
   );
@@ -54,15 +56,14 @@ function FormComment({ onSend, sending }) {
 
 // ── Component #3: LikeCommentBar (Displays counters and triggers toggle like)
 function LikeCommentBar({ likeCount, commentCount, isLiked, onToggleLike }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-3 text-sm text-(--color-muted)">
       <button
         type="button"
         onClick={onToggleLike}
-        className={`flex items-center gap-1.5 transition-colors ${
-          isLiked ? 'text-red-600' : 'hover:text-red-500'
-        }`}
-        title={isLiked ? 'Unlike' : 'Like'}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-(--color-surface-hover) transition-colors ${isLiked ? 'text-red-500' : ''}`}
+        title={isLiked ? t('Unlike', 'Unlike') : t('Like', 'Like')}
       >
         <Heart size={16} className={isLiked ? 'fill-red-600 text-red-600' : ''} />
         <span className="font-medium">{likeCount}</span>
@@ -77,6 +78,8 @@ function LikeCommentBar({ likeCount, commentCount, isLiked, onToggleLike }) {
 
 export default function QuickViewModal({ doctype, recordId, onClose }) {
   const currentUser = useAuthStore(state => state.user);
+  const [activeTab, setActiveTab] = useState('details'); // 'details' or 'activity'
+  const { t } = useTranslation();
   const [sending, setSending] = useState(false);
   const [refreshTimeline, setRefreshTimeline] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
@@ -136,7 +139,7 @@ export default function QuickViewModal({ doctype, recordId, onClose }) {
         {appLoading && (
           <div className="absolute inset-0 z-50 bg-(--color-surface) flex flex-col items-center justify-center bg-opacity-90 backdrop-blur-sm transition-opacity duration-300">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-(--color-primary) mb-3"></div>
-            <p className="text-(--color-muted) text-sm font-medium animate-pulse">Loading view...</p>
+            <p className="text-(--color-muted) text-sm font-medium animate-pulse">{t("Loading view...", "Loading view...")}</p>
           </div>
         )}
 
@@ -147,7 +150,7 @@ export default function QuickViewModal({ doctype, recordId, onClose }) {
               <Icon name={headerIcon} size={24} fallback="Database" />
             </span>
             <h2 className="text-xl font-bold tracking-tight text-(--color-text)">
-              {meta?.label || meta?.name || doctype.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+              {t(meta?.label || meta?.name || doctype.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '), meta?.label || meta?.name || doctype.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))}
             </h2>
           </div>
           

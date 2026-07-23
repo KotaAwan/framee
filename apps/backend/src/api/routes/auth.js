@@ -7,6 +7,21 @@ import { authMiddleware } from '../middlewares/tenantAuth.js';
 const router = express.Router();
 
 /**
+ * Express param middleware to intercept 'doctype'
+ * Resolves the doctype slug (e.g. 'language') to the actual table_name ('sys_language')
+ */
+router.param('doctype', async (req, res, next, doctypeSlug) => {
+  try {
+    const metaEngine = Container.resolve('MetadataEngine');
+    const meta = await metaEngine.getDocType(doctypeSlug);
+    req.params.doctype = meta.table_name;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * POST /api/v1/auth/login
  * Standard Email/Password Login
  */
@@ -89,10 +104,17 @@ router.get('/permissions/:doctype', authMiddleware, async (req, res, next) => {
   try {
     const permEngine = Container.resolve('PermissionEngine');
     const permissionsMap = await permEngine.getPermissions(req.userId);
-    const doctypePerms = permissionsMap.doctypes[req.params.doctype] || {
+    let doctypePerms = permissionsMap.doctypes[req.params.doctype] || {
       read: false, update: false, create: false, delete: false,
       lock: false, unlock: false, export: false, share: false, print: false
     };
+
+    if (permissionsMap.isSystemManager) {
+      doctypePerms = {
+        read: true, update: true, create: true, delete: true,
+        lock: true, unlock: true, export: true, share: true, print: true
+      };
+    }
 
     res.json({
       success: true,

@@ -1,6 +1,5 @@
 import React from 'react';
 import Head from 'next/head';
-import AppLayout from '@/components/layout/AppLayout';
 import { Card } from '@/components/ui/Card';
 import { Activity, Users, FileText, Settings } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -16,7 +15,7 @@ export default function WelcomeDashboard() {
   ];
 
   return (
-    <AppLayout>
+    <>
       <Head>
         <title>{t('dashboard.welcome', 'Welcome Dashboard')} | Framee</title>
       </Head>
@@ -66,6 +65,6 @@ export default function WelcomeDashboard() {
           </Card>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

@@ -22,11 +22,22 @@ class NamingEngine {
    * - 'naming_series:[prefix]': e.g., 'naming_series:INV-.YYYY.-.####'
    */
   async generateCode(meta, record, tableName) {
+    // 0. If user explicitly provides a code, respect it and skip generation
+    if (record.code && String(record.code).trim() !== '') {
+      return String(record.code).trim();
+    }
+
     const autoname = meta.auto_code || 'UUID';
 
     // 1. UUID fallback
     if (autoname.toUpperCase() === 'UUID') {
       return uuidv4();
+    }
+    
+    // 2. Prompt (manual entry)
+    if (autoname.toLowerCase() === 'prompt') {
+      if (record.code) return String(record.code).trim();
+      throw new ValidationError(`Field 'code' is required for manual naming.`);
     }
 
     // 2. Field-based

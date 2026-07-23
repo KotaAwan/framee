@@ -78,7 +78,7 @@ export default function DataTable({
             ) : (
               <ArrowUpDown size={14} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
             )}
-            <span>{headerText}</span>
+            <span>{t(headerText, headerText)}</span>
           </div>
         ),
         align: isRightAligned ? 'right' : 'left',
@@ -97,7 +97,7 @@ export default function DataTable({
     cols.push({
       size: 140,
       id: 'actions',
-      header: () => <div className="text-left font-semibold">Action</div>,
+      header: () => <div className="text-left font-semibold">{t('Action', 'Action')}</div>,
       cell: ({ row }) => {
         const recordId = row.original.id || row.original.name;
 
@@ -118,8 +118,8 @@ export default function DataTable({
                 <button title={t('Unlock', 'Unlock')} className="text-green-600 hover:text-green-700 transition-colors" onClick={() => {
                   setConfirmModal({
                     isOpen: true,
-                    title: 'Unlock Record',
-                    message: 'Are you sure you want to unlock this record to Draft?',
+                    title: t('Unlock Record', 'Unlock Record'),
+                    message: t('Are you sure you want to unlock this record to Draft?', 'Are you sure you want to unlock this record to Draft?'),
                     onConfirm: async () => {
                       setConfirmModal(prev => ({ ...prev, isOpen: false }));
                       try {
@@ -132,7 +132,7 @@ export default function DataTable({
                         }
                       } catch (e) {
                         console.error(e);
-                        alert('Failed to unlock record');
+                        alert(t('Failed to unlock record', 'Failed to unlock record'));
                       }
                     }
                   });
@@ -174,8 +174,8 @@ export default function DataTable({
                 <button title={t('Lock', 'Lock')} className="text-red-600 hover:text-red-700 transition-colors" onClick={() => {
                   setConfirmModal({
                     isOpen: true,
-                    title: 'Lock Record',
-                    message: 'Are you sure you want to lock this record to Saved?',
+                    title: t('Lock Record', 'Lock Record'),
+                    message: t('Are you sure you want to lock this record to Saved?', 'Are you sure you want to lock this record to Saved?'),
                     onConfirm: async () => {
                       setConfirmModal(prev => ({ ...prev, isOpen: false }));
                       try {
@@ -188,7 +188,7 @@ export default function DataTable({
                          }
                       } catch (e) {
                         console.error(e);
-                        alert('Failed to lock record');
+                        alert(t('Failed to lock record', 'Failed to lock record'));
                       }
                     }
                   });
@@ -197,16 +197,16 @@ export default function DataTable({
                 </button>
 
                 {/* iconEdit for Form Edit */}
-                <button title={t('Edit', 'Edit')} className="text-blue-600 hover:text-blue-700 transition-colors" onClick={() => router.push(`/${module || 'doctype'}/${doctype}/${recordId}`)}>
+                <button title={t('Edit', 'Edit')} className="text-blue-600 hover:text-blue-700 transition-colors" onClick={() => router.push(`/${module}/${doctype}/${recordId}`)}>
                   <Edit size={16} />
                 </button>
 
                 {/* iconTrash for Delete */}
-                <button title="Delete" className="text-red-600 hover:text-red-700 transition-colors" onClick={() => { 
+                <button title={t('Delete', 'Delete')} className="text-red-600 hover:text-red-700 transition-colors" onClick={() => { 
                   setConfirmModal({
                     isOpen: true,
-                    title: 'Delete Record',
-                    message: 'Are you sure you want to delete this record?',
+                    title: t('Delete Record', 'Delete Record'),
+                    message: t('Are you sure you want to delete this record?', 'Are you sure you want to delete this record?'),
                     onConfirm: async () => {
                       setConfirmModal(prev => ({ ...prev, isOpen: false }));
                       try {
@@ -218,7 +218,7 @@ export default function DataTable({
                         if (refreshData) refreshData();
                       } catch (e) {
                         console.error(e);
-                        alert('Failed to delete record');
+                        alert(t('Failed to delete record', 'Failed to delete record'));
                       }
                     }
                   });
@@ -232,7 +232,7 @@ export default function DataTable({
             {isNew && (
               <>
                 {/* iconEdit for Form Edit */}
-                <button title="Edit" className="hover:text-(--color-primary) transition-colors" onClick={() => router.push(`/${module || 'doctype'}/${doctype}/${recordId}`)}>
+                <button title="Edit" className="hover:text-(--color-primary) transition-colors" onClick={() => router.push(`/${module}/${doctype}/${recordId}`)}>
                   <Edit size={16} />
                 </button>
               </>
@@ -295,7 +295,7 @@ export default function DataTable({
         onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
         title={confirmModal.title}
         footer={
-          <Button onClick={confirmModal.onConfirm} variant="primary">Confirm</Button>
+          <Button onClick={confirmModal.onConfirm} variant="primary">{t('Confirm', 'Confirm')}</Button>
         }
       >
         <p className="text-sm text-(--color-text)">{confirmModal.message}</p>
@@ -316,7 +316,7 @@ export default function DataTable({
                     // Merge with next socials header
                     renderedHeaders.push(
                       <th key="actions-merged" colSpan={2} className="px-3 py-3 font-medium whitespace-nowrap text-left">
-                        Action
+                        {t('Action', 'Action')}
                       </th>
                     );
                     i += 2; // skip both actions and socials
@@ -338,22 +338,22 @@ export default function DataTable({
                 return <tr key={headerGroup.id}>{renderedHeaders}</tr>;
               })}
             </thead>
-            <tbody>
-              {loading ? (
+            <tbody className={`transition-opacity duration-300 ${loading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+              {loading && data.length === 0 ? (
                 <tr>
                   <td colSpan={tableColumns.length} className="px-4 py-12 text-center text-(--color-muted)">
-                    Loading data...
+                    {t('Loading data...', 'Loading data...')}
                   </td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
                   <td colSpan={tableColumns.length} className="px-4 py-12 text-center text-(--color-muted)">
-                    No records found.
+                    {t('No records found.', 'No records found.')}
                   </td>
                 </tr>
               ) : (
                 table.getRowModel().rows.map(row => (
-                  <tr key={row.id} className="border-b border-(--color-border) hover:bg-(--color-surface-hover) transition-colors">
+                  <tr key={row.id} className="border-b border-(--color-border) hover:bg-(--color-surface-hover) transition-colors animate-fade-in">
                     {row.getVisibleCells().map(cell => {
                       const isActions = cell.column.id === 'actions';
                       const isSocials = cell.column.id === 'socials';

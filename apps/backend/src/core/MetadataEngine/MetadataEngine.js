@@ -57,7 +57,10 @@ class MetadataEngine {
         .first();
     } else {
       doctype = await this.dbEngine.query('sys_doctype')
-        .where({ table_name: name, status: 'Saved' })
+        .where(function() {
+          this.where('table_name', name).orWhere('slug', name);
+        })
+        .andWhere({ status: 'Saved' })
         .first();
     }
 

@@ -11,6 +11,21 @@ const getDbEngine = () => Container.resolve('DatabaseEngine');
 router.use(authMiddleware);
 
 /**
+ * Express param middleware to intercept 'doctype'
+ * Resolves the doctype slug (e.g. 'language') to the actual table_name ('sys_language')
+ */
+router.param('doctype', async (req, res, next, doctypeSlug) => {
+  try {
+    const metaEngine = getMetadataEngine();
+    const meta = await metaEngine.getDocType(doctypeSlug);
+    req.params.doctype = meta.table_name; // Overwrite with actual table name
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/v1/meta/doctype/:doctype
  * Get DocType metadata including fields.
  */

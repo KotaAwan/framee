@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, ChevronDown } from 'lucide-react';
 import { Controller } from 'react-hook-form';
-import TableDocField from './TableDocField';
 import apiClient from '../../lib/api.client';
 import { useTranslation } from '@/hooks/useTranslation';
+import dynamic from 'next/dynamic';
 
-export default function FormField({ field, register, control, error, readOnly, autoCode }) {
+const TableDocField = dynamic(() => import('./TableDocField'), { ssr: false });
+const FormBuilderField = dynamic(() => import('./FormBuilderField'), { ssr: false });
+
+export default function FormField({ doctype, field, register, control, error, readOnly, autoCode }) {
   const { fieldname, label, fieldtype, is_required, options } = field;
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
@@ -36,6 +39,20 @@ export default function FormField({ field, register, control, error, readOnly, a
 
   // If it's a Table field, render the subgrid directly
   if (fieldtype === 'Table') {
+    // Specialized Form Builder for sys_doctype
+    if (doctype === 'sys_doctype' && fieldname === 'fields') {
+      return (
+        <FormBuilderField
+          fieldname={fieldname}
+          label={label}
+          options={options}
+          control={control}
+          register={register}
+          readOnly={readOnly}
+        />
+      );
+    }
+    
     return (
       <TableDocField
         fieldname={fieldname}

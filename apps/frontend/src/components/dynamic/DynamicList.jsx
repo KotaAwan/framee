@@ -27,18 +27,18 @@ function useDebounce(value, delay) {
 export default function DynamicList({ doctype, module }) {
   const router = useRouter();
   const { t } = useTranslation();
-  
+
   // State for data
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // State for pagination & search
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 500);
   const [totalRecords, setTotalRecords] = useState(0);
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
   const [rowSelection, setRowSelection] = useState({});
   const [meta, setMeta] = useState(null);
   const [permissions, setPermissions] = useState(null);
@@ -56,6 +56,16 @@ export default function DynamicList({ doctype, module }) {
   // Actions dropdown menu
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const actionsMenuRef = useRef(null);
+
+  // Bulk Actions State
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteProgress, setBulkDeleteProgress] = useState({ success: 0, failed: 0, total: 0 });
+  const [recordsToDelete, setRecordsToDelete] = useState([]);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Close actions menu when clicking outside
 
   // Close actions menu when clicking outside
   useEffect(() => {
@@ -77,6 +87,15 @@ export default function DynamicList({ doctype, module }) {
   const [linkFieldsOptions, setLinkFieldsOptions] = useState({});
 
   useEffect(() => {
+    // Reset state when doctype changes
+    setRowSelection({});
+    setPage(1);
+    setSearch('');
+    setActiveFilters([]);
+    setFilterInputValues({});
+  }, [doctype]);
+
+  useEffect(() => {
     if (!doctype) return;
     const fetchMeta = async () => {
       try {
@@ -92,13 +111,13 @@ export default function DynamicList({ doctype, module }) {
         if (res.data.success) {
           const metaData = res.data.data;
           setMeta(metaData);
-          
+
           // Set default visible columns based strictly on f.in_list
           const initialVisible = {};
           // Check if 'id' field is present in backend docfields and has in_list === 1
           const idField = (metaData.fields || []).find(f => f.fieldname === 'id');
           initialVisible['id'] = idField ? (idField.in_list === 1 || idField.in_list === true) : true;
-          
+
           (metaData.fields || []).forEach(f => {
             if (f.fieldname !== 'id') {
               initialVisible[f.fieldname] = (f.in_list === 1 || f.in_list === true);
@@ -165,7 +184,7 @@ export default function DynamicList({ doctype, module }) {
       const res = await apiClient.get(`/api/v1/doc/${doctype}`, {
         params: { page, pageSize, search: debouncedSearch, order_by, ...filterParams }
       });
-      
+
       if (res.data.success) {
         const results = Array.isArray(res.data.data) ? res.data.data : (res.data.data.records || []);
         setData(results);
@@ -248,19 +267,90 @@ export default function DynamicList({ doctype, module }) {
       }
 
       const blobData = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blobData);
-      
+      const url = window.URL.createObjectURL(blobData);
       const link = document.createElement('a');
-      link.href = downloadUrl;
+      link.href = url;
       link.setAttribute('download', `${doctype}_export.${format}`);
       document.body.appendChild(link);
       link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      link.parentNode.removeChild(link);
+      setSuccessMsg(t(`Exporting ${format.toUpperCase()}...`, `Exporting ${format.toUpperCase()}...`));
     } catch (err) {
-      console.error('Export failed', err);
-      alert('Failed to export data');
+      console.error('Export error:', err);
+      setErrorMsg(t(`Failed to export ${format.toUpperCase()}`, `Failed to export ${format.toUpperCase()}`));
     }
+  };
+
+  // --- Bulk Action Handlers ---
+  const handleBulkPrint = () => {
+    const selectedRecords = Object.keys(rowSelection).map(idx => data[idx]).filter(Boolean);
+    if (selectedRecords.length === 0) return;
+
+    if (selectedRecords.length > 5) {
+      if (!window.confirm(t('You are trying to print more than 5 records. This will open multiple tabs. Continue?', 'You are trying to print more than 5 records. This will open multiple tabs. Continue?'))) {
+        return;
+      }
+    }
+
+    const { accessToken } = useAuthStore.getState();
+    const baseUrl = apiClient.defaults.baseURL || 'http://localhost:3001';
+
+    selectedRecords.forEach(record => {
+      const printUrl = `${baseUrl}/api/v1/doc/${doctype}/${record.id}/print?access_token=${accessToken}`;
+      window.open(printUrl, '_blank');
+    });
+
+    // Clear selection after printing
+    setRowSelection({});
+  };
+
+  const handleBulkDeleteRequest = () => {
+    const selectedRecords = Object.keys(rowSelection).map(idx => data[idx]).filter(Boolean);
+    if (selectedRecords.length === 0) return;
+
+    // Validation: prevent deleting submitted or cancelled records
+    const invalidRecords = selectedRecords.filter(r =>
+      r.status?.toUpperCase() === 'SUBMITTED' || r.status?.toUpperCase() === 'CANCELLED'
+    );
+
+    if (invalidRecords.length > 0) {
+      setErrorMsg(t('Cannot delete Submitted or Cancelled records.', 'Cannot delete Submitted or Cancelled records.'));
+      return;
+    }
+
+    setRecordsToDelete(selectedRecords);
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const executeBulkDelete = async () => {
+    setBulkDeleting(true);
+    let successCount = 0;
+    let failedCount = 0;
+
+    setBulkDeleteProgress({ success: 0, failed: 0, total: recordsToDelete.length });
+
+    for (const record of recordsToDelete) {
+      try {
+        await apiClient.delete(`/api/v1/doc/${doctype}/${record.id}`, { data: { delete_reason: 'Bulk Delete' } });
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to delete record ${record.id}:`, err);
+        failedCount++;
+      }
+      setBulkDeleteProgress(prev => ({ ...prev, success: successCount, failed: failedCount }));
+    }
+
+    setBulkDeleting(false);
+    setIsBulkDeleteModalOpen(false);
+    setRowSelection({});
+
+    if (failedCount === 0) {
+      setSuccessMsg(`${t('Successfully deleted', 'Successfully deleted')} ${successCount} ${t('records.', 'records.')}`);
+    } else {
+      setErrorMsg(`${t('Deleted', 'Deleted')} ${successCount} ${t('records, but', 'records, but')} ${failedCount} ${t('failed.', 'failed.')}`);
+    }
+
+    fetchData();
   };
 
   const handleImport = async (e) => {
@@ -273,12 +363,12 @@ export default function DynamicList({ doctype, module }) {
     try {
       const res = await apiClient.post(`/api/v1/doc/${doctype}/import`, formData);
       if (res.data.success) {
-        alert(`Successfully imported ${res.data.imported} records.`);
+        setSuccessMsg(`Successfully imported ${res.data.imported} records.`);
         fetchData();
       }
     } catch (err) {
       console.error('Import failed', err);
-      alert(err.response?.data?.message || 'Failed to import data');
+      setErrorMsg(err.response?.data?.message || 'Failed to import data');
     }
     e.target.value = null; // reset
   };
@@ -323,7 +413,7 @@ export default function DynamicList({ doctype, module }) {
       }
     } catch (err) {
       console.error('Failed to save fields visibility to DB', err);
-      alert('Failed to save layout changes to database.');
+      setErrorMsg('Failed to save layout changes to database.');
     }
   };
 
@@ -364,7 +454,7 @@ export default function DynamicList({ doctype, module }) {
       }
     } catch (err) {
       console.error('Failed to save filter settings to DB', err);
-      alert('Failed to save filter configuration to database.');
+      setErrorMsg('Failed to save filter configuration to database.');
     }
   };
 
@@ -478,8 +568,8 @@ export default function DynamicList({ doctype, module }) {
         <div className="flex items-center gap-2">
           {!meta ? (
             <div className="flex items-center gap-3 w-48">
-               <div className="w-6 h-6 bg-(--color-border) rounded-full animate-pulse"></div>
-               <div className="h-6 bg-(--color-border) rounded-md flex-1 animate-pulse"></div>
+              <div className="w-6 h-6 bg-(--color-border) rounded-full animate-pulse"></div>
+              <div className="h-6 bg-(--color-border) rounded-md flex-1 animate-pulse"></div>
             </div>
           ) : (
             <>
@@ -488,11 +578,39 @@ export default function DynamicList({ doctype, module }) {
             </>
           )}
         </div>
-        
+
         <div className="hidden sm:block">
           <Breadcrumb />
         </div>
       </div>
+
+      {errorMsg && (
+        <div className="bg-red-50/50 dark:bg-red-900/10 border-l-4 border-red-500 p-3 rounded-r-md flex justify-between items-start shadow-sm ring-1 ring-red-500/20 my-2">
+          <div className="flex gap-3">
+            <Icon name="AlertTriangle" size={18} className="text-red-500 mt-0.5 shrink-0" />
+            <div className="text-(--color-text) text-sm font-medium whitespace-pre-line">
+              {errorMsg}
+            </div>
+          </div>
+          <button onClick={() => setErrorMsg('')} className="text-red-500 hover:text-red-700 dark:hover:text-red-300 ml-3 shrink-0 transition-colors">
+            <Icon name="X" size={16} />
+          </button>
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="bg-green-50/50 dark:bg-green-900/10 border-l-4 border-green-500 p-3 rounded-r-md flex justify-between items-start shadow-sm ring-1 ring-green-500/20 my-2">
+          <div className="flex gap-3">
+            <Icon name="CheckCircle2" size={18} className="text-green-500 mt-0.5 shrink-0" />
+            <div className="text-(--color-text) text-sm font-medium whitespace-pre-line">
+              {successMsg}
+            </div>
+          </div>
+          <button onClick={() => setSuccessMsg('')} className="text-green-500 hover:text-green-700 dark:hover:text-green-300 ml-3 shrink-0 transition-colors">
+            <Icon name="X" size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Active Filter Badges */}
       {activeFilters.length > 0 && (
@@ -504,7 +622,7 @@ export default function DynamicList({ doctype, module }) {
             <div key={idx} className="flex items-center gap-1 bg-(--color-surface-hover) border border-(--color-border) px-2 py-0.5 rounded-full text-xs">
               <span className="font-medium text-(--color-text)">{f.label}:</span>
               <span className="text-(--color-muted)">{f.displayValue || f.value || 'Empty'}</span>
-              <button 
+              <button
                 onClick={() => removeFilter(idx)}
                 className="text-red-500 hover:text-red-700 ml-1 font-bold focus:outline-none"
               >
@@ -512,8 +630,8 @@ export default function DynamicList({ doctype, module }) {
               </button>
             </div>
           ))}
-          <button 
-            onClick={handleClearAllFilters} 
+          <button
+            onClick={handleClearAllFilters}
             className="text-xs text-red-500 hover:underline font-medium"
           >
             Clear All
@@ -524,173 +642,177 @@ export default function DynamicList({ doctype, module }) {
       <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden flex flex-col">
         {/* Toolbar Area */}
         <div className="flex flex-wrap justify-between items-center gap-4 p-4 border-b border-(--color-border)">
-        
-        <div className="flex flex-wrap items-center gap-3 flex-1 w-full sm:w-auto">
-          
-          {/* Dynamic Filter Inputs matching in_filter === 1 (with exact width w-40 to keep them unified) */}
-          {activeSearchFilters.map(f => {
-            const inputVal = filterInputValues[f.fieldname] || '';
-            
-            // 1. Link FieldType Select Box
-            if (f.fieldtype === 'Link') {
-              const opts = linkFieldsOptions[f.fieldname] || [];
-              return (
-                <div key={f.fieldname} className="w-40 relative">
-                  <select
-                    value={inputVal}
-                    onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
-                    className="w-full px-3 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) appearance-none pr-8"
-                  >
-                    <option value="">{t('search', 'Search')} {t(f.label, f.label)}...</option>
-                    {opts.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-(--color-muted)">
-                    <Filter size={12} />
+
+          <div className="flex flex-wrap items-center gap-3 flex-1 w-full sm:w-auto">
+
+            {/* Dynamic Filter Inputs matching in_filter === 1 (with exact width w-40 to keep them unified) */}
+            {activeSearchFilters.map(f => {
+              const inputVal = filterInputValues[f.fieldname] || '';
+
+              // 1. Link FieldType Select Box
+              if (f.fieldtype === 'Link') {
+                const opts = linkFieldsOptions[f.fieldname] || [];
+                return (
+                  <div key={f.fieldname} className="w-40 relative">
+                    <select
+                      value={inputVal}
+                      onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
+                      className="w-full px-3 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) appearance-none pr-8"
+                    >
+                      <option value="">{t('search', 'Search')} {t(f.label, f.label)}...</option>
+                      {opts.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-(--color-muted)">
+                      <Filter size={12} />
+                    </div>
                   </div>
-                </div>
-              );
-            }
+                );
+              }
 
-            // 2. Check FieldType Select Box (Yes / No)
-            if (f.fieldtype === 'Check') {
-              return (
-                <div key={f.fieldname} className="w-40 relative">
-                  <select
-                    value={inputVal}
-                    onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
-                    className="w-full px-3 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) appearance-none pr-8"
-                  >
-                    <option value="">{t('search', 'Search')} {t(f.label, f.label)}...</option>
-                    <option value="1">{t('yes', 'Yes')}</option>
-                    <option value="0">{t('no', 'No')}</option>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-(--color-muted)">
-                    <Filter size={12} />
+              // 2. Check FieldType Select Box (Yes / No)
+              if (f.fieldtype === 'Check') {
+                return (
+                  <div key={f.fieldname} className="w-40 relative">
+                    <select
+                      value={inputVal}
+                      onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
+                      className="w-full px-3 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) appearance-none pr-8"
+                    >
+                      <option value="">{t('search', 'Search')} {t(f.label, f.label)}...</option>
+                      <option value="1">{t('yes', 'Yes')}</option>
+                      <option value="0">{t('no', 'No')}</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-(--color-muted)">
+                      <Filter size={12} />
+                    </div>
                   </div>
-                </div>
+                );
+              }
+
+              // 3. Standard Text / Data Input Field
+              return (
+                <input
+                  key={f.fieldname}
+                  type="text"
+                  placeholder={`${t('search', 'Search')} ${t(f.label, f.label)}...`}
+                  value={inputVal}
+                  onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && fetchData()}
+                  className="w-40 px-3 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) placeholder:text-(--color-input-placeholder)"
+                />
               );
-            }
+            })}
+          </div>
 
-            // 3. Standard Text / Data Input Field
-            return (
-              <input
-                key={f.fieldname}
-                type="text"
-                placeholder={`${t('search', 'Search')} ${t(f.label, f.label)}...`}
-                value={inputVal}
-                onChange={(e) => handleFilterInputChange(f.fieldname, e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && fetchData()}
-                className="w-40 px-3 py-2 bg-(--color-input-bg) text-(--color-input-text) border border-(--color-input-border) rounded-md text-sm focus:outline-none focus:border-(--color-primary) placeholder:text-(--color-input-placeholder)"
-              />
-            );
-          })}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {Object.keys(rowSelection).length > 0 && (
-            <div className="relative group">
-              <button className="flex items-center gap-1 p-2 border border-(--color-border) rounded-md hover:bg-(--color-surface-hover) text-sm font-medium text-(--color-text) bg-(--color-input-bg) shadow-sm transition-colors">
-                Bulk Action
-              </button>
-              <div className="absolute right-0 top-full pt-1 hidden group-hover:block z-10 w-40">
-                <div className="bg-(--color-surface) shadow-lg border border-(--color-border) rounded-md py-1">
-                   <button className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
-                     Print Selected
-                   </button>
-                   <button className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-red-50 text-sm text-red-600">
-                     Delete Selected
-                   </button>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Actions Dropdown */}
-          <div className="relative" ref={actionsMenuRef}>
-            <button 
-              onClick={() => setIsActionsMenuOpen(prev => !prev)}
-              className="p-2 border border-(--color-border) rounded-md hover:bg-(--color-surface-hover) text-(--color-muted) transition-colors bg-(--color-input-bg)"
-            >
-              <MoreVertical size={18} />
-            </button>
-            {isActionsMenuOpen && (
-              <div className="absolute right-0 top-full pt-1 z-10 w-48">
-                <div className="bg-(--color-surface) shadow-lg border border-(--color-border) rounded-md py-1">
-                   <button 
-                      onClick={() => { document.getElementById('import-csv').click(); setIsActionsMenuOpen(false); }} 
-                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={!permissions?.import}
-                   >
-                     <Upload size={14} /> Import CSV
-                   </button>
-                   <input 
-                      type="file" 
-                      id="import-csv" 
-                      className="hidden" 
-                      accept=".csv"
-                      onChange={handleImport}
-                    />
-                   <div className="border-t border-(--color-border) my-1"></div>
-                   <button 
-                      onClick={() => { setIsActionsMenuOpen(false); handleExport('xlsx'); }} 
-                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={!permissions?.export}
-                   >
-                     <Download size={14} /> Export XLSX
-                   </button>
-                   <button 
-                      onClick={() => { setIsActionsMenuOpen(false); handleExport('pdf'); }} 
-                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={!permissions?.export}
-                   >
-                     <Download size={14} /> Export PDF
-                   </button>
-                   <div className="border-t border-(--color-border) my-1"></div>
-                   <button onClick={() => { openFieldsViewModal(); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
-                     <Columns size={14} /> Fields View
-                   </button>
-                   <button onClick={() => { openFieldsFilterModal(); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
-                     <Settings size={14} /> Fields Filter
-                   </button>
+          <div className="flex items-center gap-2">
+            {Object.keys(rowSelection).length > 0 && (
+              <div className="relative group">
+                <button className="flex items-center gap-1 p-2 border border-(--color-border) rounded-md hover:bg-(--color-surface-hover) text-sm font-medium text-(--color-text) bg-(--color-input-bg) shadow-sm transition-colors">
+                  {t('Bulk Action', 'Bulk Action')}
+                </button>
+                <div className="absolute right-0 top-full pt-1 hidden group-hover:block z-10 w-40">
+                  <div className="bg-(--color-surface) shadow-lg border border-(--color-border) rounded-md py-1">
+                    {permissions?.print && (
+                      <button onClick={handleBulkPrint} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
+                        {t('Print Selected', 'Print Selected')}
+                      </button>
+                    )}
+                    {permissions?.delete && (
+                      <button onClick={handleBulkDeleteRequest} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-red-50 text-sm text-red-600">
+                        {t('Delete Selected', 'Delete Selected')}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* Actions Dropdown */}
+            <div className="relative" ref={actionsMenuRef}>
+              <button
+                onClick={() => setIsActionsMenuOpen(prev => !prev)}
+                className="p-2 border border-(--color-border) rounded-md hover:bg-(--color-surface-hover) text-(--color-muted) transition-colors bg-(--color-input-bg)"
+              >
+                <MoreVertical size={18} />
+              </button>
+              {isActionsMenuOpen && (
+                <div className="absolute right-0 top-full pt-1 z-10 w-48">
+                  <div className="bg-(--color-surface) shadow-lg border border-(--color-border) rounded-md py-1">
+                    <button
+                      onClick={() => { document.getElementById('import-csv').click(); setIsActionsMenuOpen(false); }}
+                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!permissions?.import}
+                    >
+                      <Upload size={14} /> {t('Import CSV', 'Import CSV')}
+                    </button>
+                    <input
+                      type="file"
+                      id="import-csv"
+                      className="hidden"
+                      accept=".csv"
+                      onChange={handleImport}
+                    />
+                    <div className="border-t border-(--color-border) my-1"></div>
+                    <button
+                      onClick={() => { setIsActionsMenuOpen(false); handleExport('xlsx'); }}
+                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!permissions?.export}
+                    >
+                      <Download size={14} /> {t('Export XLSX', 'Export XLSX')}
+                    </button>
+                    <button
+                      onClick={() => { setIsActionsMenuOpen(false); handleExport('pdf'); }}
+                      className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text) disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!permissions?.export}
+                    >
+                      <Download size={14} /> {t('Export PDF', 'Export PDF')}
+                    </button>
+                    <div className="border-t border-(--color-border) my-1"></div>
+                    <button onClick={() => { openFieldsViewModal(); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
+                      <Columns size={14} /> {t('Fields View', 'Fields View')}
+                    </button>
+                    <button onClick={() => { openFieldsFilterModal(); setIsActionsMenuOpen(false); }} className="flex items-center gap-2 w-full text-left px-4 py-2 hover:bg-(--color-surface-hover) text-sm text-(--color-text)">
+                      <Settings size={14} /> {t('Fields Filter', 'Fields Filter')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              className="flex items-center justify-center bg-(--color-primary) text-white w-9 h-9 rounded-md hover:bg-(--color-primary-hover) transition-colors"
+              onClick={() => router.push(`/${module}/${doctype}/new`)}
+              title={t('Create New', 'Create New')}
+            >
+              <Plus size={18} />
+            </button>
           </div>
-          
-          <button 
-            className="flex items-center justify-center bg-(--color-primary) text-white w-9 h-9 rounded-md hover:bg-(--color-primary-hover) transition-colors"
-            onClick={() => router.push(`/${module || 'doctype'}/${doctype}/new`)}
-            title={t('Create New', 'Create New')}
-          >
-            <Plus size={18} />
-          </button>
+        </div>
+
+        {/* Data Table */}
+        <div className="bg-(--color-surface) shadow-sm border border-(--color-border) rounded-lg overflow-hidden">
+          <DataTable
+            data={data}
+            columns={columns}
+            loading={loading}
+            doctype={doctype}
+            meta={meta}
+            module={module}
+            page={page}
+            pageSize={pageSize}
+            totalRecords={totalRecords}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            rowSelection={rowSelection}
+            setRowSelection={setRowSelection}
+            refreshData={fetchData}
+            sortConfig={sortConfig}
+            onSort={handleSort}
+          />
         </div>
       </div>
-
-      {/* Data Table */}
-      <div className="bg-(--color-surface) shadow-sm border border-(--color-border) rounded-lg overflow-hidden">
-        <DataTable 
-          data={data} 
-          columns={columns} 
-          loading={loading}
-          doctype={doctype}
-          meta={meta}
-          module={module}
-          page={page}
-          pageSize={pageSize}
-          totalRecords={totalRecords}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-          rowSelection={rowSelection}
-          setRowSelection={setRowSelection}
-          refreshData={fetchData}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-        />
-      </div>
-    </div>
 
       {/* Activity Timeline */}
       <ActivityTimeline doctype={doctype} refreshTrigger={refreshActivity} />
@@ -699,27 +821,27 @@ export default function DynamicList({ doctype, module }) {
       <Modal
         isOpen={isViewModalOpen}
         onClose={() => setIsViewModalOpen(false)}
-        title="Fields View Configuration"
+        title={t('Fields View Configuration', 'Fields View Configuration')}
         footer={
-          <Button onClick={saveFieldsView}>Save</Button>
+          <Button onClick={saveFieldsView}>{t('Save', 'Save')}</Button>
         }
       >
         <div className="flex flex-col gap-4">
           {/* Select All Toggle (no border, slightly adjusted margin bottom) */}
           <label className="flex items-center gap-3 text-sm font-semibold text-(--color-text) cursor-pointer pb-1 mb-1">
-            <input 
+            <input
               type="checkbox"
               checked={isAllChecked}
               onChange={handleSelectAllToggle}
               className="rounded border-gray-300 text-(--color-primary) focus:ring-(--color-primary)"
             />
-            Select All
+            {t('Select All', 'Select All')}
           </label>
 
           <div className="flex flex-col gap-3">
             {/* Allow ID field to be toggled */}
             <label className="flex items-center gap-3 text-sm font-medium text-(--color-text) cursor-pointer">
-              <input 
+              <input
                 type="checkbox"
                 checked={tempVisibleColumns['id'] !== false}
                 onChange={() => toggleTempColumnVisibility('id')}
@@ -733,13 +855,13 @@ export default function DynamicList({ doctype, module }) {
               ?.filter(f => !['id', 'password', 'pin', 'google_id', 'avatar_url', 'password_hash', 'pin_hash', 'is_deleted', 'status'].includes(f.fieldname))
               ?.map(f => (
                 <label key={f.fieldname} className="flex items-center gap-3 text-sm font-medium text-(--color-text) cursor-pointer">
-                  <input 
+                  <input
                     type="checkbox"
                     checked={tempVisibleColumns[f.fieldname] !== false}
                     onChange={() => toggleTempColumnVisibility(f.fieldname)}
                     className="rounded border-gray-300 text-(--color-primary) focus:ring-(--color-primary)"
                   />
-                  {f.label}
+                  {t(f.label, f.label)}
                 </label>
               ))}
           </div>
@@ -750,36 +872,65 @@ export default function DynamicList({ doctype, module }) {
       <Modal
         isOpen={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
-        title="Fields Filter Configuration"
+        title={t('Fields Filter Configuration', 'Fields Filter Configuration')}
         footer={
-          <Button onClick={saveFieldsFilterConfig}>Save</Button>
+          <Button onClick={saveFieldsFilterConfig}>{t('Save', 'Save')}</Button>
         }
       >
         <div className="flex flex-col gap-4">
           {/* Select All Toggle (no border, slightly adjusted margin bottom) */}
           <label className="flex items-center gap-3 text-sm font-semibold text-(--color-text) cursor-pointer pb-1 mb-1">
-            <input 
+            <input
               type="checkbox"
               checked={isAllFiltersChecked}
               onChange={handleSelectAllFiltersToggle}
               className="rounded border-gray-300 text-(--color-primary) focus:ring-(--color-primary)"
             />
-            Select All
+            {t('Select All', 'Select All')}
           </label>
 
           <div className="flex flex-col gap-3">
             {fieldsActiveInList.map(f => (
               <label key={f.fieldname} className="flex items-center gap-3 text-sm font-medium text-(--color-text) cursor-pointer">
-                <input 
+                <input
                   type="checkbox"
                   checked={tempFilterFieldsConfig[f.fieldname] === true}
                   onChange={() => toggleTempFilterConfig(f.fieldname)}
                   className="rounded border-gray-300 text-(--color-primary) focus:ring-(--color-primary)"
                 />
-                {f.label}
+                {t(f.label, f.label)}
               </label>
             ))}
           </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Modal */}
+      <Modal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => !bulkDeleting && setIsBulkDeleteModalOpen(false)}
+        title={t('Delete Selected', 'Delete Selected')}
+        footer={
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setIsBulkDeleteModalOpen(false)} disabled={bulkDeleting}>
+              {t('Cancel', 'Cancel')}
+            </Button>
+            <Button variant="danger" onClick={executeBulkDelete} disabled={bulkDeleting}>
+              {bulkDeleting ? t('Deleting...', 'Deleting...') : t('Confirm', 'Confirm')}
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-(--color-text)">
+            {t('Are you sure you want to delete these records?', 'Are you sure you want to delete these records?')} ({recordsToDelete.length})
+          </p>
+          {bulkDeleting && (
+            <div className="text-sm text-(--color-muted)">
+              {t('Progress', 'Progress')}: {bulkDeleteProgress.success + bulkDeleteProgress.failed} / {bulkDeleteProgress.total}
+              {bulkDeleteProgress.failed > 0 && <span className="text-red-500 ml-2">({bulkDeleteProgress.failed} {t('Failed', 'Failed')})</span>}
+            </div>
+          )}
         </div>
       </Modal>
     </div>

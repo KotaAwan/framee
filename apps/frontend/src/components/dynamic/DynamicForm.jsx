@@ -23,6 +23,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
   const [isSingle, setIsSingle] = useState(false);
   const [workflow, setWorkflow] = useState(null);
   const [showVersions, setShowVersions] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const isNew = recordId === 'new';
 
@@ -30,41 +31,36 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
   const zodSchema = useMemo(() => {
     const shape = {};
     schema.forEach(field => {
-      let validator;
-      if (['Data', 'Select', 'Link', 'Text', 'Password'].includes(field.fieldtype)) {
+      const isRequired = field.reqd || field.is_required;
+      
+      if (isRequired && !field.is_hidden) {
         if (field.fieldtype === 'Link') {
-          // Link can be a string (UUID) or a number (autoincrement ID like Language)
-          validator = z.union([z.string(), z.number()]);
+          shape[field.fieldname] = z.union([z.string(), z.number()]).refine(
+            val => val !== undefined && val !== null && val !== '',
+            { message: `${field.label} is required` }
+          );
+        } else if (['Data', 'Select', 'Text', 'Password'].includes(field.fieldtype)) {
+          shape[field.fieldname] = z.string().min(1, { message: `${field.label} is required` });
+        } else if (field.fieldtype === 'Check') {
+          shape[field.fieldname] = z.boolean({ required_error: `${field.label} is required` });
         } else {
-          validator = z.string();
+          shape[field.fieldname] = z.any().refine(
+            val => val !== undefined && val !== null && val !== '',
+            { message: `${field.label} is required` }
+          );
         }
-
-        if (field.is_required && !field.is_hidden) {
-          if (field.fieldtype === 'Link') {
-            validator = validator.refine(val => val !== undefined && val !== null && val !== '', {
-              message: `${field.label} is required`
-            });
-          } else {
-            validator = validator.min(1, `${field.label} is required`);
-          }
-        } else {
-          validator = validator.optional().or(z.literal('').or(z.null()));
-        }
-        
-        // Specific fieldname rules
-        if (field.fieldname === 'pin_hash' || field.fieldname === 'pin') {
-          // If a pin is provided, it must be 6 digits
-          validator = validator.refine(val => !val || /^\d{6}$/.test(val), {
-            message: 'PIN must be exactly 6 digits'
-          });
-        }
-      } else if (field.fieldtype === 'Check') {
-        validator = z.boolean().optional();
       } else {
-        // Fallback
-        validator = z.any();
+        // Optional fields: accept anything (string, number, boolean, null, undefined)
+        shape[field.fieldname] = z.any().optional().nullable();
       }
-      shape[field.fieldname] = validator;
+      
+      // Pin validation specific
+      if (field.fieldname === 'pin_hash' || field.fieldname === 'pin') {
+        shape[field.fieldname] = z.string().optional().nullable().refine(
+          val => !val || /^\d{6}$/.test(String(val)),
+          { message: 'PIN must be exactly 6 digits' }
+        );
+      }
     });
     return z.object(shape);
   }, [schema]);
@@ -178,8 +174,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
           console.warn('Auto-workflow transition failed:', e.response?.data || e.message);
         }
       }
-
-      setSuccessMsg(`Data berhasil disimpan! Mengalihkan dalam 3 detik...`);
+      setSuccessMsg(t('Record saved successfully!', 'Record saved successfully!'));
       setTimeout(() => {
         const currentModule = router.query.module || 'doctype';
         router.push(`/${currentModule}/${doctype}`);
@@ -187,7 +182,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
     } catch (err) {
       console.error('Submit error:', err);
       const apiError = err.response?.data?.error || err.response?.data;
-      const msg = apiError?.message || 'Failed to save record.';
+      const msg = apiError?.message || t('Failed to save record.', 'Failed to save record.');
       const details = apiError?.details || apiError?.errors;
       if (details && Array.isArray(details)) {
         setErrorMsg(`${msg}:\n${details.map(e => `• ${e}`).join('\n')}`);
@@ -247,6 +242,23 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
     } catch (err) {
       console.error('PDF error:', err);
       setErrorMsg('Failed to download PDF.');
+    }
+  };
+
+  const handleActivateDocType = async () => {
+    if (doctype !== 'sys_doctype' || isNew) return;
+    setSaving(true);
+    try {
+      const res = await apiClient.post(`/api/v1/doc/sys_doctype/${recordId}/activate`);
+      if (res.data.success) {
+        setSuccessMsg(res.data.message || 'DocType activated successfully');
+        loadForm(); // reload to get new is_active status
+      }
+    } catch (err) {
+      console.error('Activate error:', err);
+      setErrorMsg(err.response?.data?.message || 'Failed to activate DocType');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -336,6 +348,16 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
           ))}
           {!isNew && !isSingle && (
             <>
+              {doctype === 'sys_doctype' && (data?.is_active === 0 || data?.is_active === false) && (
+                <button 
+                  type="button"
+                  onClick={handleActivateDocType}
+                  disabled={saving || loading}
+                  className="flex items-center gap-1 bg-green-100 text-green-700 hover:bg-green-200 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                >
+                  <Icon name="Database" size={16} /> {t('Activate (Create Table)', 'Activate (Create Table)')}
+                </button>
+              )}
               <button 
                 type="button"
                 onClick={() => setShowVersions(true)}
@@ -351,26 +373,36 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
               disabled={saving || loading}
               className="flex items-center gap-1 bg-(--color-primary) text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-(--color-primary-hover) disabled:opacity-50 transition-colors"
             >
-              {saving ? t('Saving...', 'Saving...') : (currentStatus === 'Draft' ? t('Update', 'Update') : t('Save', 'Save'))}
+              {saving ? t('Saving...', 'Saving...') : (!isNew ? t('Update', 'Update') : t('Save', 'Save'))}
             </button>
         </div>
       </div>
 
       {errorMsg && (
-        <div className="p-4 mb-6 bg-red-500 text-white rounded-lg flex flex-col gap-1.5 text-sm font-medium shadow-sm animate-in fade-in zoom-in duration-300">
-          <div className="flex items-center gap-2 font-bold">
-            <AlertTriangle size={18} className="text-white" />
-            <span>Warning</span>
+        <div className="bg-red-50/50 dark:bg-red-900/10 border-l-4 border-red-500 p-3 rounded-r-md flex justify-between items-start shadow-sm ring-1 ring-red-500/20 my-2 animate-in fade-in zoom-in duration-300">
+          <div className="flex gap-3">
+            <Icon name="AlertTriangle" size={18} className="text-red-500 mt-0.5 shrink-0" />
+            <div className="text-(--color-text) text-sm font-medium whitespace-pre-line">
+              {errorMsg}
+            </div>
           </div>
-          <div className="whitespace-pre-line pl-6">
-            {errorMsg}
-          </div>
+          <button type="button" onClick={() => setErrorMsg('')} className="text-red-500 hover:text-red-700 dark:hover:text-red-300 ml-3 shrink-0 transition-colors">
+            <Icon name="X" size={16} />
+          </button>
         </div>
       )}
-
+      
       {successMsg && (
-        <div className="p-4 mb-6 bg-green-500 text-white rounded-lg shadow-sm text-sm font-medium animate-in fade-in zoom-in duration-300">
-          {successMsg}
+        <div className="bg-green-50/50 dark:bg-green-900/10 border-l-4 border-green-500 p-3 rounded-r-md flex justify-between items-start shadow-sm ring-1 ring-green-500/20 my-2 animate-in fade-in zoom-in duration-300">
+          <div className="flex gap-3">
+            <Icon name="CheckCircle2" size={18} className="text-green-500 mt-0.5 shrink-0" />
+            <div className="text-(--color-text) text-sm font-medium whitespace-pre-line">
+              {successMsg}
+            </div>
+          </div>
+          <button type="button" onClick={() => setSuccessMsg('')} className="text-green-500 hover:text-green-700 dark:hover:text-green-300 ml-3 shrink-0 transition-colors">
+            <Icon name="X" size={16} />
+          </button>
         </div>
       )}
 
@@ -389,7 +421,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                     <h3 className="font-semibold text-(--color-text) text-base">{t(sectionName, sectionName)}</h3>
                     {(sectionName === 'General' || sectionName === 'Basic Details') && (
                       <span className="text-sm font-semibold text-(--color-text)">
-                        {t('ID', 'ID')} : {isNew ? t('Auto', 'Auto') : recordId}
+                        {t('ID', 'ID')} : {isNew ? t('Auto', 'Auto') : (data?.id || data?.name || recordId)}
                       </span>
                     )}
                   </div>
@@ -405,6 +437,32 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                         if (doctype === 'sys_user' && !isNew && (field.fieldname.includes('password') || field.fieldname.includes('pin'))) {
                           return null;
                         }
+                        
+                        // Visibility logic based on depends_on
+                        if (field.depends_on) {
+                          try {
+                            let match = field.depends_on.match(/(\w+)\s*(==|!=)\s*['"]?([^'"]+)['"]?/);
+                            if (match) {
+                              const [_, depField, operator, targetValue] = match;
+                              const currValue = watch(depField);
+                              if (operator === '==' && currValue !== targetValue) return null;
+                              if (operator === '!=' && currValue === targetValue) return null;
+                            } else {
+                              // More complex eval
+                              const isVisible = eval(`
+                                (function(doc) {
+                                  try {
+                                    return ${field.depends_on};
+                                  } catch(e) { return true; }
+                                })(${JSON.stringify(watch())})
+                              `);
+                              if (!isVisible) return null;
+                            }
+                          } catch (err) {
+                            // fallback visible on error
+                          }
+                        }
+                        
                         return (
                         <div key={field.fieldname} className={`col-span-1 ${getColSpanClass(field.column_width)}`}>
                           {(() => {
@@ -412,6 +470,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                             const isFieldReadOnly = !isEditable || (field.is_read_only === 1 || field.is_read_only === true);
                             return (
                               <FormField 
+                                doctype={doctype}
                                 field={field} 
                                 register={register} 
                                 control={control}
@@ -434,9 +493,7 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
       </div>
 
       {/* Reset Password Card for sys_user Edit */}
-      {doctype === 'sys_user' && !isNew && !isModal && isEditable && (() => {
-        const [showChangePassword, setShowChangePassword] = React.useState(false);
-        return (
+      {doctype === 'sys_user' && !isNew && !isModal && isEditable && (
           <div className="bg-(--color-surface) rounded-lg shadow-sm border border-(--color-border) overflow-hidden mt-6">
              <div className="px-5 py-4 border-b border-(--color-border) bg-(--color-section-header-bg)">
                <h3 className="font-semibold text-(--color-text) text-base">{t('Change Password', 'Change Password')}</h3>
@@ -479,9 +536,9 @@ export default function DynamicForm({ doctype, recordId, readOnly = false, isMod
                </div>
              </div>
           </div>
-        );
-      })()}
+      )}
 
+      {/* 5. Right Sidebar (Timeline, Versions) */}
       {showVersions && (
         <VersionHistoryModal 
           doctype={doctype} 

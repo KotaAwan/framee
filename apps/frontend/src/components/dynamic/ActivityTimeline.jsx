@@ -27,9 +27,9 @@ function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, 
 
       <div className="divide-y divide-(--color-border)">
         {loading && logs.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-(--color-muted) text-center animate-pulse">Loading activity...</div>
+          <div className="px-5 py-6 text-sm text-(--color-muted) text-center animate-pulse">{t('Loading activity...', 'Loading activity...')}</div>
         ) : logs.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-(--color-muted) text-center">No activity yet.</div>
+          <div className="px-5 py-6 text-sm text-(--color-muted) text-center">{t('No activity yet.', 'No activity yet.')}</div>
         ) : (
           logs.map((log, idx) => {
             const actionStyle = getActionStyle(log.action);
@@ -55,14 +55,12 @@ function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, 
 
                 {/* Content */}
                 <div className="flex-1 min-w-0 text-sm flex flex-wrap items-center gap-1">
-                  <span className="font-semibold text-(--color-text)">{log.user_name || t('System', 'System')}</span>
-                  <span>
-                    <span className={`font-semibold ${actionStyle.color}`}>{actionStyle.text}</span>
-                    {log.doc_id && <span className="text-(--color-muted)">, ID {log.doc_id}</span>}
-                  </span>
+                  <span className="font-semibold text-(--color-text)">{log.user_name || t('System', 'System')},</span>
+                  <span className={`font-semibold ${actionStyle.color}`}>{actionStyle.text}</span>
+                  {log.doc_id && <span className="text-(--color-text)">ID {log.doc_id}</span>}
                   
                   {(log.content || metadata?.comment) && (
-                    <span className="text-(--color-muted) italic text-xs truncate max-w-xs">({log.content || metadata?.comment})</span>
+                    <span className="text-(--color-muted) italic text-xs truncate max-w-xs"> : ({log.content || metadata?.comment})</span>
                   )}
                 </div>
 
@@ -84,7 +82,7 @@ function ListActivity({ loading, logs, doctype, recordId, refreshTrigger, page, 
             disabled={loading}
             className="text-sm font-medium text-(--color-primary) hover:text-(--color-primary-hover) disabled:opacity-50 transition-colors px-4 py-2 rounded-md hover:bg-(--color-surface-hover)"
           >
-            {loading ? 'Loading...' : t('LoadMore', 'Load More...')}
+            {loading ? t('Loading...', 'Loading...') : t('LoadMore', 'Load More...')}
           </button>
         </div>
       )}

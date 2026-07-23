@@ -31,8 +31,8 @@ class PrintEngine {
    * Fetch the active print format for a given DocType.
    */
   async _getPrintFormat(doctype, formatName = null) {
-    const query = this.dbEngine.query('sys_print_format')
-      .where({ doctype_name: doctype, is_active: true });
+    const query = this.dbEngine.query('sys_print', { includeDeleted: false })
+      .where({ doctype: doctype });
 
     if (formatName) {
       query.andWhere({ name: formatName });
@@ -44,8 +44,8 @@ class PrintEngine {
     
     // If no explicit default, get the first one available
     if (!format && !formatName) {
-      return await this.dbEngine.query('sys_print_format')
-        .where({ doctype_name: doctype, is_active: true })
+      return await this.dbEngine.query('sys_print', { includeDeleted: false })
+        .where({ doctype: doctype })
         .first();
     }
     

@@ -38,7 +38,7 @@ class DataEngine {
     delete exportFilters.pageSize;
     
     // 2. Fetch data
-    const records = await this.crudEngine.getList(doctype, exportFilters, userId);
+    const { records } = await this.crudEngine.getList(doctype, exportFilters, userId);
     
     if (!records || records.length === 0) {
       throw new ValidationError('No records found to export.');

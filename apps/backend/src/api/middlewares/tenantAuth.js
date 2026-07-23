@@ -9,12 +9,19 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key';
  */
 export const authMiddleware = (req, res, next) => {
   try {
+    let token;
     const authHeader = req.headers['authorization'];
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new AuthenticationError('Missing or invalid Authorization header');
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if (req.query && req.query.access_token) {
+      token = req.query.access_token;
     }
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+      throw new AuthenticationError('Missing or invalid Authorization token');
+    }
+
     const decoded = jwt.verify(token, JWT_SECRET);
 
     req.userId = decoded.userId;

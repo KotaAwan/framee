@@ -10,8 +10,8 @@ export async function up(knex) {
     await knex.schema.createTable(`${tableName}_logs`, (table) => {
       table.increments('id').unsigned().primary();
       table.integer('doc_id').unsigned().notNullable(); // Link to main table id
-      table.string('status', 100).nullable();
-      table.text('content').nullable();
+      table.string('status', 30).nullable();
+      table.string('content', 100).nullable();
       table.integer('created_by').unsigned().nullable(); // user_id
       table.timestamp('created_at').defaultTo(knex.fn.now());
       
@@ -42,37 +42,37 @@ export async function up(knex) {
   // 1. sys_language
   await createTrackingTables('sys_language', knex, (table) => {
     table.increments('id').unsigned().primary();
-    table.string('code', 50).notNullable().unique();
+    table.string('code', 30).notNullable().unique();
     table.string('name', 100).notNullable();
     table.boolean('is_deleted').defaultTo(false);
-    table.string('status', 100).nullable();
+    table.string('status', 30).nullable();
   });
 
   // 2. sys_translation
   await createTrackingTables('sys_translation', knex, (table) => {
     table.increments('id').unsigned().primary();
-    table.string('code', 50).nullable().unique();
+    table.string('code', 30).nullable().unique();
     table.string('name', 100).nullable();
     table.integer('language_id').unsigned().nullable();
     table.text('translated_text').nullable();
     table.boolean('is_deleted').defaultTo(false);
-    table.string('status', 100).nullable();
+    table.string('status', 30).nullable();
   });
 
   // 3. sys_module
   await createTrackingTables('sys_module', knex, (table) => {
     table.increments('id').unsigned().primary();
-    table.string('code', 50).nullable().unique();
+    table.string('code', 30).nullable().unique();
     table.string('name', 100).notNullable();
     table.string('icon', 50).nullable();
     table.boolean('is_deleted').defaultTo(false);
-    table.string('status', 100).nullable();
+    table.string('status', 30).nullable();
   });
 
   // 4. sys_doctype
   await createTrackingTables('sys_doctype', knex, (table) => {
     table.increments('id').unsigned().primary();
-    table.string('code', 50).nullable().unique();
+    table.string('code', 30).nullable().unique();
     table.string('name', 100).notNullable(); // Previously label
     table.string('table_name', 100).notNullable().unique(); // Previously name
     table.integer('module_id').unsigned().nullable();
@@ -81,7 +81,7 @@ export async function up(knex) {
     table.boolean('is_tree').defaultTo(false);
     table.boolean('is_single').defaultTo(false);
     table.boolean('is_deleted').defaultTo(false);
-    table.string('status', 100).nullable();
+    table.string('status', 30).nullable();
   });
 
   // 5. sys_docfield (No logs or version tables)
@@ -106,7 +106,7 @@ export async function up(knex) {
   // 6. sys_workspace (replaces sys_workspace_shortcut)
   await createTrackingTables('sys_workspace', knex, (table) => {
     table.increments('id').unsigned().primary();
-    table.string('code', 50).nullable().unique();
+    table.string('code', 30).nullable().unique();
     table.string('name', 100).notNullable();
     table.integer('module_id').unsigned().nullable();
     table.string('type', 50).nullable();
@@ -114,7 +114,7 @@ export async function up(knex) {
     table.string('icon', 50).nullable();
     table.integer('sort_order').defaultTo(0);
     table.boolean('is_deleted').defaultTo(false);
-    table.string('status', 100).nullable();
+    table.string('status', 30).nullable();
   });
   
   // 7. Retain sys_audit_log

@@ -30,6 +30,11 @@ class CRUDEngine {
     // We only enforce required fields on insert, or if the field is present on update
     for (const field of meta.fields) {
       if (field.is_required && !field.is_hidden) {
+        // Skip validation for 'code' field if auto_code is set, because it will be generated later
+        if (field.fieldname === 'code' && meta.auto_code) {
+          continue;
+        }
+        
         if (!isUpdate && (data[field.fieldname] === undefined || data[field.fieldname] === null || data[field.fieldname] === '')) {
           errors.push(`Field '${field.fieldname}' is required.`);
         } else if (isUpdate && data[field.fieldname] !== undefined && (data[field.fieldname] === null || data[field.fieldname] === '')) {
@@ -89,6 +94,7 @@ class CRUDEngine {
     }
 
     const parentData = { ...data };
+    delete parentData.id; // Prevent client from injecting id on insert
     const childrenData = [];
 
     for (const field of meta.fields) {
@@ -297,6 +303,8 @@ class CRUDEngine {
       });
     }
 
+    const countQuery = query.clone();
+    
     const _limit = limit ? parseInt(limit, 10) : (pageSize ? parseInt(pageSize, 10) : null);
     const _offset = offset ? parseInt(offset, 10) : (page && pageSize ? (parseInt(page, 10) - 1) * parseInt(pageSize, 10) : null);
 
@@ -308,6 +316,9 @@ class CRUDEngine {
     } else {
       query.orderBy('id', 'desc');
     }
+    
+    const countResult = await countQuery.count({ total: '*' }).first();
+    const total = countResult ? parseInt(countResult.total, 10) : 0;
     
     const records = await query;
     
@@ -400,7 +411,7 @@ class CRUDEngine {
       }
     }
     
-    return records;
+    return { records, total };
   }
 
   /**
@@ -563,7 +574,7 @@ class CRUDEngine {
       await this.dbEngine.getRawConnection()(`${tableName}_logs`).insert({
         doc_id: id,
         status: 'Deleted',
-        content: existingDoc.name || null,
+        content: null, // As requested: saat Delete tidak perlu isi content
         created_by: userId,
         created_at: new Date()
       });

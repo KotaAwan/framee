@@ -4,7 +4,7 @@ export async function seed(knex) {
   // Clear existing (urutan FK safe)
   const tables = [
     'sys_user_role', 'sys_user', 'sys_permission', 'sys_role',
-    'sys_print', 'sys_settings', 'sys_workflow',
+    'sys_print', 'sys_company', 'sys_currency', 'sys_workflow',
     'sys_state', 'sys_action',
     'sys_workspace', 'sys_menu', 'sys_docfield', 'sys_doctype', 'sys_module',
     'sys_translation', 'sys_language'
@@ -27,9 +27,9 @@ export async function seed(knex) {
 
   // 2. Module
   await knex('sys_module').insert([
-    { id: 1, code: 'MODU-2607-0001', name: 'System', slug: 'system', icon: 'Settings', is_deleted: false, status: 'Saved' },
-    { id: 2, code: 'MODU-2607-0002', name: 'Core', slug: 'core', icon: 'Database', is_deleted: false, status: 'Saved' },
-    { id: 3, code: 'MODU-2607-0003', name: 'Dashboard', slug: 'dashboard', icon: 'LayoutDashboard', is_deleted: false, status: 'Saved' },
+    { id: 1, code: 'MODU-2607-0001', name: 'Dashboard', slug: 'dashboard', icon: 'LayoutDashboard', is_deleted: false, status: 'Saved' },
+    { id: 2, code: 'MODU-2607-0002', name: 'Core', slug: 'core', icon: 'Cube', is_deleted: false, status: 'Saved' },
+    { id: 3, code: 'MODU-2607-0003', name: 'System', slug: 'system', icon: 'Cubes', is_deleted: false, status: 'Saved' },
     { id: 4, code: 'MODU-2607-0004', name: 'Settings', slug: 'settings', icon: 'Settings', is_deleted: false, status: 'Saved' }
   ]);
 
@@ -53,23 +53,24 @@ export async function seed(knex) {
 
   // 5. Doctype
   const doctypes = [
-    { id: 1, code: 'DOCT-2607-0001', name: 'Language', slug: 'sys_language', table_name: 'sys_language', module_id: 1, icon: 'Globe', auto_code: 'LANG-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 2, code: 'DOCT-2607-0002', name: 'Translation', slug: 'sys_translation', table_name: 'sys_translation', module_id: 1, icon: 'Type', auto_code: 'TRAN-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 3, code: 'DOCT-2607-0003', name: 'Doctype', slug: 'sys_doctype', table_name: 'sys_doctype', module_id: 1, icon: 'Database', auto_code: 'DOCT-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 4, code: 'DOCT-2607-0004', name: 'Module', slug: 'sys_module', table_name: 'sys_module', module_id: 1, icon: 'Package', auto_code: 'MODU-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 5, code: 'DOCT-2607-0005', name: 'Workspace', slug: 'sys_workspace', table_name: 'sys_workspace', module_id: 1, icon: 'Layout', auto_code: 'WORK-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 6, code: 'DOCT-2607-0006', name: 'Role', slug: 'sys_role', table_name: 'sys_role', module_id: 1, icon: 'Shield', auto_code: 'ROLE-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 7, code: 'DOCT-2607-0007', name: 'Permission', slug: 'sys_permission', table_name: 'sys_permission', module_id: 1, icon: 'Lock', auto_code: 'PERM-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 8, code: 'DOCT-2607-0008', name: 'User', slug: 'sys_user', table_name: 'sys_user', module_id: 1, icon: 'Users', auto_code: 'USER-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 9, code: 'DOCT-2607-0009', name: 'User Role', slug: 'sys_user_role', table_name: 'sys_user_role', module_id: 1, icon: 'UserCheck', auto_code: 'UROL-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 10, code: 'DOCT-2607-0010', name: 'Company', slug: 'sys_company', table_name: 'sys_company', module_id: 4, icon: 'Building', auto_code: 'COMP-.YY..MM.-.XXXX', is_single: true, is_deleted: false, status: 'Saved' },
-    { id: 11, code: 'DOCT-2607-0011', name: 'State', slug: 'sys_state', table_name: 'sys_state', module_id: 4, icon: 'GitCommit', auto_code: 'STAT-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 12, code: 'DOCT-2607-0012', name: 'Action', slug: 'sys_action', table_name: 'sys_action', module_id: 4, icon: 'Play', auto_code: 'ACTI-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 13, code: 'DOCT-2607-0013', name: 'Workflow', slug: 'sys_workflow', table_name: 'sys_workflow', module_id: 4, icon: 'GitMerge', auto_code: 'WKFW-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 14, code: 'DOCT-2607-0014', name: 'Print', slug: 'sys_print', table_name: 'sys_print', module_id: 1, icon: 'Printer', auto_code: 'PRIN-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 15, code: 'DOCT-2607-0015', name: 'Menu', slug: 'sys_menu', table_name: 'sys_menu', module_id: 1, icon: 'Menu', auto_code: 'MENU-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
-    { id: 16, code: 'DOCT-2607-0016', name: 'Welcome', slug: 'sys_welcome', table_name: 'sys_welcome', module_id: 3, icon: 'Home', auto_code: 'WELC-.YY..MM.-.XXXX', is_single: true, is_deleted: false, status: 'Saved' },
-    { id: 17, code: 'DOCT-2607-0017', name: 'Currency', slug: 'sys_currency', table_name: 'sys_currency', module_id: 4, icon: 'DollarSign', auto_code: 'CURR-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' }
+    { id: 1, code: 'DOCT-2607-0001', name: 'Language', slug: 'language', table_name: 'sys_language', module_id: 1, icon: 'Globe', auto_code: 'LANG-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 2, code: 'DOCT-2607-0002', name: 'Translation', slug: 'translation', table_name: 'sys_translation', module_id: 1, icon: 'Type', auto_code: 'TRAN-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 3, code: 'DOCT-2607-0003', name: 'Doctype', slug: 'doctype', table_name: 'sys_doctype', module_id: 1, icon: 'Database', auto_code: 'DOCT-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 4, code: 'DOCT-2607-0004', name: 'Module', slug: 'module', table_name: 'sys_module', module_id: 1, icon: 'Package', auto_code: 'MODU-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 5, code: 'DOCT-2607-0005', name: 'Workspace', slug: 'workspace', table_name: 'sys_workspace', module_id: 4, icon: 'Layout', auto_code: 'WORK-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 6, code: 'DOCT-2607-0006', name: 'Role', slug: 'role', table_name: 'sys_role', module_id: 1, icon: 'Shield', auto_code: 'ROLE-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 7, code: 'DOCT-2607-0007', name: 'Permission', slug: 'permission', table_name: 'sys_permission', module_id: 1, icon: 'Lock', auto_code: 'PERM-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 8, code: 'DOCT-2607-0008', name: 'User', slug: 'user', table_name: 'sys_user', module_id: 1, icon: 'Users', auto_code: 'USER-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 9, code: 'DOCT-2607-0009', name: 'User Role', slug: 'user_role', table_name: 'sys_user_role', module_id: 1, icon: 'UserCheck', auto_code: 'UROL-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 10, code: 'DOCT-2607-0010', name: 'Company', slug: 'company', table_name: 'sys_company', module_id: 4, icon: 'Building', auto_code: 'COMP-.YY..MM.-.XXXX', is_single: true, is_deleted: false, status: 'Saved' },
+    { id: 11, code: 'DOCT-2607-0011', name: 'State', slug: 'state', table_name: 'sys_state', module_id: 4, icon: 'GitCommit', auto_code: 'STAT-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 12, code: 'DOCT-2607-0012', name: 'Action', slug: 'action', table_name: 'sys_action', module_id: 4, icon: 'Play', auto_code: 'ACTI-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 13, code: 'DOCT-2607-0013', name: 'Workflow', slug: 'workflow', table_name: 'sys_workflow', module_id: 4, icon: 'GitMerge', auto_code: 'WKFW-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 14, code: 'DOCT-2607-0014', name: 'Print', slug: 'print', table_name: 'sys_print', module_id: 1, icon: 'Printer', auto_code: 'PRIN-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 15, code: 'DOCT-2607-0015', name: 'Menu', slug: 'menu', table_name: 'sys_menu', module_id: 1, icon: 'Menu', auto_code: 'MENU-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 16, code: 'DOCT-2607-0016', name: 'Welcome', slug: 'welcome', table_name: 'sys_welcome', module_id: 3, icon: 'Home', auto_code: 'WELC-.YY..MM.-.XXXX', is_single: true, is_deleted: false, status: 'Saved' },
+    { id: 17, code: 'DOCT-2607-0017', name: 'Currency', slug: 'currency', table_name: 'sys_currency', module_id: 4, icon: 'DollarSign', auto_code: 'CURR-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' },
+    { id: 18, code: 'DOCT-2607-0018', name: 'Docfield', slug: 'docfield', table_name: 'sys_docfield', module_id: 1, icon: 'List', auto_code: 'FLD-.YY..MM.-.XXXX', is_deleted: false, status: 'Saved' }
   ];
   await knex('sys_doctype').insert(doctypes);
 
@@ -219,26 +220,23 @@ export async function seed(knex) {
   ]);
 
   await knex('sys_workspace').insert([
-    {
-      id: 1,
-      code: 'WORK-2607-0001',
-      name: 'Admin User Menu',
-      role_id: 1,
-      menu_id: 1,
-      sort_order: 1,
-      is_deleted: false,
-      status: 'Saved'
-    },
-    {
-      id: 2,
-      code: 'WORK-2607-0002',
-      name: 'Admin Menu Management',
-      role_id: 1,
-      menu_id: 2,
-      sort_order: 2,
-      is_deleted: false,
-      status: 'Saved'
-    }
+    { id: 1, code: 'WORK-2607-0001', name: 'System', module_id: 3, doctype: 'sys_language', sort_order: 301, is_deleted: false, status: 'Saved' },
+    { id: 2, code: 'WORK-2607-0002', name: 'System', module_id: 3, doctype: 'sys_translation', sort_order: 302, is_deleted: false, status: 'Saved' },
+    { id: 3, code: 'WORK-2607-0003', name: 'System', module_id: 3, doctype: 'sys_module', sort_order: 303, is_deleted: false, status: 'Saved' },
+    { id: 4, code: 'WORK-2607-0004', name: 'Settings', module_id: 4, doctype: 'sys_workspace', sort_order: 405, is_deleted: false, status: 'Saved' },
+    { id: 5, code: 'WORK-2607-0005', name: 'System', module_id: 3, doctype: 'sys_role', sort_order: 304, is_deleted: false, status: 'Saved' },
+    { id: 6, code: 'WORK-2607-0006', name: 'System', module_id: 4, doctype: 'sys_permission', sort_order: 404, is_deleted: false, status: 'Saved' },
+    { id: 7, code: 'WORK-2607-0007', name: 'System', module_id: 4, doctype: 'sys_user', sort_order: 402, is_deleted: false, status: 'Saved' },
+    { id: 8, code: 'WORK-2607-0008', name: 'System', module_id: 4, doctype: 'sys_user_role', sort_order: 403, is_deleted: false, status: 'Saved' },
+    { id: 9, code: 'WORK-2607-0009', name: 'System', module_id: 2, doctype: 'sys_print', sort_order: 203, is_deleted: false, status: 'Saved' },
+    { id: 11, code: 'WORK-2607-0011', name: 'Core', module_id: 2, doctype: 'sys_doctype', sort_order: 201, is_deleted: false, status: 'Saved' },
+    { id: 12, code: 'WORK-2607-0012', name: 'Core', module_id: 2, doctype: 'sys_docfield', sort_order: 202, is_deleted: false, status: 'Saved' },
+    { id: 13, code: 'WORK-2607-0013', name: 'Dashboard', module_id: 1, doctype: 'sys_welcome', sort_order: 101, is_deleted: false, status: 'Saved' },
+    { id: 14, code: 'WORK-2607-0014', name: 'Settings', module_id: 4, doctype: 'sys_company', sort_order: 401, is_deleted: false, status: 'Saved' },
+    { id: 15, code: 'WORK-2607-0015', name: 'Settings', module_id: 2, doctype: 'sys_state', sort_order: 204, is_deleted: false, status: 'Saved' },
+    { id: 16, code: 'WORK-2607-0016', name: 'Settings', module_id: 2, doctype: 'sys_action', sort_order: 205, is_deleted: false, status: 'Saved' },
+    { id: 17, code: 'WORK-2607-0017', name: 'Settings', module_id: 2, doctype: 'sys_workflow', sort_order: 206, is_deleted: false, status: 'Saved' },
+    { id: 18, code: 'WORK-2607-0018', name: 'Settings', module_id: 3, doctype: 'sys_currency', sort_order: 305, is_deleted: false, status: 'Saved' }
   ]);
   
   // 10. Docfields (Full population for tables 1-8)
@@ -313,6 +311,7 @@ export async function seed(knex) {
     { fieldname: 'module_id', label: 'Module', fieldtype: 'Link', options: 'sys_module' },
     { fieldname: 'icon', label: 'Icon', fieldtype: 'Data', in_list: false },
     { fieldname: 'auto_code', label: 'Auto Code', fieldtype: 'Data' },
+    { fieldname: 'is_tree', label: 'Is Tree', fieldtype: 'Check' },
     { fieldname: 'is_single', label: 'Is Single', fieldtype: 'Check' },
     { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
     { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
@@ -341,8 +340,8 @@ export async function seed(knex) {
   pushFields('sys_workspace', [
     { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
     { fieldname: 'name', label: 'Name', fieldtype: 'Data', reqd: true, in_search: true },
-    { fieldname: 'role_id', label: 'Role', fieldtype: 'Link', options: 'sys_role' },
-    { fieldname: 'menu_id', label: 'Menu', fieldtype: 'Link', options: 'sys_menu' },
+    { fieldname: 'module_id', label: 'Module', fieldtype: 'Link', options: 'sys_module' },
+    { fieldname: 'doctype', label: 'Doctype', fieldtype: 'Data' },
     { fieldname: 'sort_order', label: 'Sort Order', fieldtype: 'Int', in_list: false },
     { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
     { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
@@ -395,10 +394,136 @@ export async function seed(knex) {
     { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
   ]);
 
+  // sys_user_role
+  pushFields('sys_user_role', [
+    { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data', reqd: false },
+    { fieldname: 'user_id', label: 'User', fieldtype: 'Link', options: 'sys_user', reqd: true },
+    { fieldname: 'role_id', label: 'Role', fieldtype: 'Link', options: 'sys_role', reqd: true },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
+  ]);
+
+  // sys_welcome
+  pushFields('sys_welcome', [
+    { fieldname: 'title', label: 'Welcome Title', fieldtype: 'Data', reqd: true },
+    { fieldname: 'message', label: 'Welcome Message', fieldtype: 'Text' },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false }
+  ]);
+
+  // sys_company
+  pushFields('sys_company', [
+    { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data', reqd: true },
+    { fieldname: 'currency_id', label: 'Currency', fieldtype: 'Link', options: 'sys_currency' },
+    { fieldname: 'timezone', label: 'Timezone', fieldtype: 'Select', options: 'Asia/Jakarta\nUTC\nAmerica/New_York\nEurope/London\nAustralia/Sydney' },
+    { fieldname: 'date_format', label: 'Date Format', fieldtype: 'Select', options: 'dd/MM/yyyy\nMM/dd/yyyy\nyyyy-MM-dd' },
+    { fieldname: 'enable_registration', label: 'Enable Registration', fieldtype: 'Check' },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
+  ]);
+
+  // sys_currency
+  pushFields('sys_currency', [
+    { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data', reqd: true },
+    { fieldname: 'symbol', label: 'Symbol', fieldtype: 'Data' },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
+  ]);
+
+  // sys_state
+  pushFields('sys_state', [
+    { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data', reqd: true },
+    { fieldname: 'style', label: 'Style', fieldtype: 'Data' },
+    { fieldname: 'is_terminal', label: 'Is Terminal', fieldtype: 'Check' },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
+  ]);
+
+  // sys_action
+  pushFields('sys_action', [
+    { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data', reqd: true },
+    { fieldname: 'key', label: 'Key', fieldtype: 'Data', reqd: true },
+    { fieldname: 'style', label: 'Style', fieldtype: 'Data' },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
+  ]);
+
+  // sys_workflow
+  pushFields('sys_workflow', [
+    { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data', reqd: true },
+    { fieldname: 'doctype', label: 'Doctype', fieldtype: 'Data', reqd: true },
+    { fieldname: 'initial_state', label: 'Initial State', fieldtype: 'Data', reqd: true },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
+  ]);
+  
+  // sys_workflow_transition 
+  pushFields('sys_workflow_transition', [
+    { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data' },
+    { fieldname: 'doctype', label: 'Doctype', fieldtype: 'Data' },
+    { fieldname: 'from_state', label: 'From State', fieldtype: 'Data', reqd: true },
+    { fieldname: 'to_state', label: 'To State', fieldtype: 'Data', reqd: true },
+    { fieldname: 'action', label: 'Action', fieldtype: 'Data', reqd: true },
+    { fieldname: 'allow_roles', label: 'Allow Roles', fieldtype: 'Data' },
+    { fieldname: 'sort_order', label: 'Sort Order', fieldtype: 'Int' },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
+  ]);
+
+  // sys_print
+  pushFields('sys_print', [
+    { fieldname: 'code', label: 'Code', fieldtype: 'Data', reqd: true },
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data', reqd: true },
+    { fieldname: 'doctype', label: 'Doctype', fieldtype: 'Data', reqd: true },
+    { fieldname: 'html_template', label: 'HTML Template', fieldtype: 'Text' },
+    { fieldname: 'is_default', label: 'Is Default', fieldtype: 'Check' },
+    { fieldname: 'is_deleted', label: 'Is Deleted', fieldtype: 'Check', in_list: false },
+    { fieldname: 'status', label: 'Status', fieldtype: 'Data' }
+  ]);
+
+  // 9. sys_docfield
+  pushFields('sys_docfield', [
+    { fieldname: 'doctype', label: 'Doctype', fieldtype: 'Link', options: 'sys_doctype', reqd: true },
+    { fieldname: 'label', label: 'Label', fieldtype: 'Data', reqd: true, in_search: true },
+    { fieldname: 'fieldname', label: 'Fieldname', fieldtype: 'Data', reqd: true, in_search: true },
+    { fieldname: 'fieldtype', label: 'Fieldtype', fieldtype: 'Select', options: 'Data,Int,Float,Currency,Check,Select,Link,Text,Password,Date,Datetime', reqd: true },
+    { fieldname: 'options', label: 'Options', fieldtype: 'Data' },
+    { fieldname: 'icon', label: 'Icon', fieldtype: 'Data' },
+    { fieldname: 'default_value', label: 'Default Value', fieldtype: 'Data' },
+    { fieldname: 'is_required', label: 'Is Required', fieldtype: 'Check' },
+    { fieldname: 'is_read_only', label: 'Is Read Only', fieldtype: 'Check' },
+    { fieldname: 'is_hidden', label: 'Is Hidden', fieldtype: 'Check' },
+    { fieldname: 'in_list', label: 'In List', fieldtype: 'Check' },
+    { fieldname: 'in_filter', label: 'In Filter', fieldtype: 'Check' },
+    { fieldname: 'in_search', label: 'In Search', fieldtype: 'Check' },
+    { fieldname: 'sort_order', label: 'Sort Order', fieldtype: 'Int' }
+  ]);
+
   await knex('sys_docfield').insert(docfields);
 
   // 11. Translations
   const idDictionary = {
+    'Save': 'Simpan',
+    'Update': 'Perbarui',
+    'Timezone': 'Zona Waktu',
+    'Date Format': 'Format Tanggal',
+    'Action': 'Aksi',
+    'Bulk Action': 'Tindakan Massal',
+    'No records found.': 'Tidak ada data ditemukan.',
+    'Loading data...': 'Memuat data...',
+    'No activity yet.': 'Belum ada aktivitas.',
+    'Loading activity...': 'Memuat aktivitas...',
+    'Currency': 'Mata Uang',
+    'Company': 'Perusahaan',
+    'Dashboard': 'Beranda',
+    'Symbol': 'Simbol',
     'System': 'Sistem',
     'Core': 'Inti',
     'Language': 'Bahasa',
@@ -453,10 +578,111 @@ export async function seed(knex) {
     'Saved': 'Disimpan',
     'Active': 'Aktif',
     'Submit': 'Submit',
-    'Cancel': 'Batal'
+    'Cancel': 'Batal',
+
+    'Delete Record': 'Hapus Data',
+    'Are you sure you want to delete this record?': 'Apakah Anda yakin ingin menghapus data ini?',
+    'Failed to delete record': 'Gagal menghapus data',
+    'Delete Selected': 'Hapus yang Dipilih',
+    'Record saved successfully!': 'Data berhasil disimpan!',
+    'Welcome': 'Selamat Datang',
+    'Failed to save record.': 'Gagal menyimpan data.',
+    'Unlock Record': 'Buka Kunci Data',
+    'Are you sure you want to unlock this record to Draft?': 'Apakah Anda yakin ingin membuka kunci data ini menjadi Draf?',
+    'Failed to unlock record': 'Gagal membuka kunci data',
+    'Lock Record': 'Kunci Data',
+    'Are you sure you want to lock this record to Saved?': 'Apakah Anda yakin ingin mengunci data ini menjadi Tersimpan?',
+    'Failed to lock record': 'Gagal mengunci data',
+    'Confirm': 'Konfirmasi',
+    'Saving...': 'Menyimpan...',
+    'Key': 'Kunci',
+    'Style': 'Gaya Tampilan',
+    'Write a comment...': 'Tulis komentar...',
+    'Send': 'Kirim',
+    'Like': 'Suka',
+    'Unlike': 'Batal Suka',
+    'Loading view...': 'Memuat tampilan...',
+    'Cancelled': 'Dibatalkan',
+    'Liked': 'Menyukai',
+    'Unliked': 'Batal Menyukai',
+    'Commented': 'Berkomentar',
+    'Loading...': 'Memuat...',
+    'Import CSV': 'Impor CSV',
+    'Export XLSX': 'Ekspor XLSX',
+    'Export PDF': 'Ekspor PDF',
+    'Fields View': 'Tampilan Kolom',
+    'Fields Filter': "Filter Kolom",
+    'Fields View Configuration': "Konfigurasi Tampilan Kolom",
+    'Fields Filter Configuration': "Konfigurasi Filter Kolom",
+    'Select All': "Pilih Semua",
+    'Print Selected': "Cetak yang Dipilih",
+    'You are trying to print more than 5 records. This will open multiple tabs. Continue?': "Anda mencoba mencetak lebih dari 5 data. Ini akan membuka banyak tab. Lanjutkan?",
+    'Cannot delete Submitted or Cancelled records.': "Tidak dapat menghapus data yang sudah Disubmit atau Dibatalkan.",
+    'Successfully deleted': "Berhasil menghapus",
+    'records.': "data.",
+    'records, but': "data, tetapi",
+    'failed.': "gagal.",
+    'Are you sure you want to delete these records?': "Apakah Anda yakin ingin menghapus data-data ini?",
+    'Progress': "Progres",
+    'Deleting...': "Menghapus..."
   };
 
-  const termsToTranslate = new Set();
+  const termsToTranslate = new Set([
+
+    'Delete Record',
+    'Are you sure you want to delete this record?',
+    'Failed to delete record',
+    'Delete Selected',
+    'Record saved successfully!',
+    'Save',
+    'Update',
+    'Action',
+    'Bulk Action',
+    'No records found.',
+    'Loading data...',
+    'No activity yet.',
+    'Loading activity...',
+    'Welcome',
+    'Failed to save record.',
+    'Unlock Record',
+    'Are you sure you want to unlock this record to Draft?',
+    'Failed to unlock record',
+    'Lock Record',
+    'Are you sure you want to lock this record to Saved?',
+    'Failed to lock record',
+    'Confirm',
+    'Saving...',
+    'Key',
+    'Style',
+    'Write a comment...',
+    'Send',
+    'Like',
+    'Unlike',
+    'Loading view...',
+    'Cancelled',
+    'Liked',
+    'Unliked',
+    'Commented',
+    'Loading...',
+    'Import CSV',
+    'Export XLSX',
+    'Export PDF',
+    'Fields View',
+    'Fields Filter',
+    'Fields View Configuration',
+    'Fields Filter Configuration',
+    'Select All',
+    'Print Selected',
+    'You are trying to print more than 5 records. This will open multiple tabs. Continue?',
+    'Cannot delete Submitted or Cancelled records.',
+    'Successfully deleted',
+    'records.',
+    'records, but',
+    'failed.',
+    'Are you sure you want to delete these records?',
+    'Progress',
+    'Deleting...'
+  ]);
   
   // Extract from Module
   const modules = await knex('sys_module').select('name');
