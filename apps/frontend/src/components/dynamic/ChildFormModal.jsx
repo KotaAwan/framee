@@ -84,6 +84,30 @@ export default function ChildFormModal({
     }
   }, [isOpen, initialData, reset]);
 
+  const parsedColumns = useMemo(() => {
+    const columns = [];
+    let currentCol = [];
+    
+    schema.forEach(field => {
+      if (field.is_hidden) return;
+      if (childDocType === 'sys_docfield' && ['doctype', 'icon', 'sort_order'].includes(field.fieldname)) return;
+      if (field.fieldtype === 'Column Break') {
+        if (currentCol.length > 0) columns.push(currentCol);
+        currentCol = [];
+      } else if (field.fieldtype === 'Section Break') {
+        if (currentCol.length > 0) columns.push(currentCol);
+        currentCol = [];
+        columns.push([field]);
+        columns.push([]); // Start new column after section
+        currentCol = columns[columns.length - 1];
+      } else {
+        currentCol.push(field);
+      }
+    });
+    if (currentCol.length > 0) columns.push(currentCol);
+    return columns;
+  }, [schema, childDocType]);
+
   const onSubmit = (data) => {
     onSave(data);
     onClose();
@@ -116,7 +140,7 @@ export default function ChildFormModal({
               <Icon name="Loader2" size={32} className="animate-spin" />
             </div>
           ) : (
-            <form id="child-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div className="space-y-6">
               
               {Object.keys(errors).length > 0 && (
                 <div className="bg-amber-50/50 dark:bg-amber-900/10 border-l-4 border-amber-500 p-3 rounded-r-md flex justify-between items-start">
@@ -135,88 +159,64 @@ export default function ChildFormModal({
               )}
 
               <div className="flex flex-col gap-6">
-                {useMemo(() => {
-                  const columns = [];
-                  let currentCol = [];
-                  
-                  // Simple layout parser: groups fields by Column Break
-                  schema.forEach(field => {
-                    if (field.is_hidden) return;
-                    if (field.fieldtype === 'Column Break') {
-                      if (currentCol.length > 0) columns.push(currentCol);
-                      currentCol = [];
-                    } else if (field.fieldtype === 'Section Break') {
-                      if (currentCol.length > 0) columns.push(currentCol);
-                      currentCol = [];
-                      columns.push([field]);
-                      columns.push([]); // Start new column after section
-                      currentCol = columns[columns.length - 1];
-                    } else {
-                      currentCol.push(field);
+                <div className="flex flex-col md:flex-row gap-6 items-start">
+                  {parsedColumns.map((colFields, cIdx) => {
+                    if (colFields.length === 1 && colFields[0].fieldtype === 'Section Break') {
+                      return (
+                        <div key={`sec_${cIdx}`} className="w-full border-b border-(--color-border) pb-2 mb-2 mt-4 flex-none">
+                          <h3 className="text-lg font-semibold text-(--color-section-header-text)">{t(colFields[0].label)}</h3>
+                        </div>
+                      );
                     }
-                  });
-                  if (currentCol.length > 0) columns.push(currentCol);
+                    if (colFields.length === 0) return null;
 
-                  return (
-                    <div className="flex flex-col md:flex-row gap-6 items-start">
-                      {columns.map((colFields, cIdx) => {
-                        if (colFields.length === 1 && colFields[0].fieldtype === 'Section Break') {
+                    return (
+                      <div key={`col_${cIdx}`} className="flex-1 flex flex-col gap-4 w-full min-w-[250px]">
+                        {colFields.map(field => {
+                          // Visibility logic based on depends_on
+                          if (field.depends_on) {
+                            try {
+                              let match = field.depends_on.match(/(\w+)\s*(==|!=)\s*['"]?([^'"]+)['"]?/);
+                              if (match) {
+                                const [_, depField, operator, targetValue] = match;
+                                const currValue = watch(depField);
+                                if (operator === '==' && currValue !== targetValue) return null;
+                                if (operator === '!=' && currValue === targetValue) return null;
+                               } else {
+                                 // Safe evaluation
+                                 try {
+                                   const doc = watch();
+                                   const isVisible = (function(doc) {
+                                     try { return eval(field.depends_on); } catch(e) { return true; }
+                                   })(doc);
+                                   if (!isVisible) return null;
+                                 } catch (e) {
+                                   // Fallback visible on error
+                                 }
+                               }
+                            } catch (err) {
+                              // fallback visible
+                            }
+                          }
+
                           return (
-                            <div key={`sec_${cIdx}`} className="w-full border-b border-(--color-border) pb-2 mb-2 mt-4 flex-none">
-                              <h3 className="text-lg font-semibold text-(--color-section-header-text)">{t(colFields[0].label)}</h3>
+                            <div key={field.id || field.fieldname} className="w-full">
+                              <FormField
+                                field={field}
+                                register={register}
+                                control={control}
+                                error={errors[field.fieldname]}
+                              />
                             </div>
                           );
-                        }
-                        if (colFields.length === 0) return null;
-
-                        return (
-                          <div key={`col_${cIdx}`} className="flex-1 flex flex-col gap-4 w-full min-w-[250px]">
-                            {colFields.map(field => {
-                              // Visibility logic based on depends_on
-                              if (field.depends_on) {
-                                try {
-                                  let match = field.depends_on.match(/(\w+)\s*(==|!=)\s*['"]?([^'"]+)['"]?/);
-                                  if (match) {
-                                    const [_, depField, operator, targetValue] = match;
-                                    const currValue = watch(depField);
-                                    if (operator === '==' && currValue !== targetValue) return null;
-                                    if (operator === '!=' && currValue === targetValue) return null;
-                                  } else {
-                                    // More complex eval
-                                    const isVisible = eval(`
-                                      (function(doc) {
-                                        try {
-                                          return ${field.depends_on};
-                                        } catch(e) { return true; }
-                                      })(${JSON.stringify(watch())})
-                                    `);
-                                    if (!isVisible) return null;
-                                  }
-                                } catch (err) {
-                                  // fallback visible
-                                }
-                              }
-
-                              return (
-                                <div key={field.id} className="w-full">
-                                  <FormField
-                                    field={field}
-                                    register={register}
-                                    control={control}
-                                    error={errors[field.fieldname]}
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                }, [schema, watch, errors, register, control, t])}
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-            </form>
+            </div>
           )}
         </div>
 
@@ -230,8 +230,8 @@ export default function ChildFormModal({
             {t('Cancel')}
           </button>
           <button
-            type="submit"
-            form="child-form"
+            type="button"
+            onClick={handleSubmit(onSubmit)}
             className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 shadow-sm transition-colors flex items-center gap-2"
           >
             {childDocType === 'sys_docfield' ? t('Done') : t('Save')}

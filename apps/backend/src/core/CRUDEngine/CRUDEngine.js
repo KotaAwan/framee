@@ -142,22 +142,30 @@ class CRUDEngine {
       }
 
       for (const child of childrenData) {
-        if (!child.options) throw new ValidationError(`Field ${child.fieldname} is missing 'options' (Child DocType).`);
-        const childMeta = await this.metaEngine.getDocType(child.options);
+        if (!child.options || child.options.length === 0) throw new ValidationError(`Field ${child.fieldname} is missing 'options' (Child DocType).`);
+        const childDocTypeName = Array.isArray(child.options) ? child.options[0] : child.options;
+        const childMeta = await this.metaEngine.getDocType(childDocTypeName);
         const childTableName = childMeta.table_name;
         
         let idx = 0;
         for (const row of child.records) {
-          const childRecord = {
-            ...row,
-            parent_id: insertedId,
-            parent_doctype: doctype,
-            parent_field: child.fieldname,
-            idx: idx++,
-            status: childMeta.initial_status || 'Active',
-          };
+          const childRecord = { ...row };
+
+          if (childTableName === 'sys_docfield') {
+            delete childRecord.id;
+            delete childRecord._ui_id;
+            delete childRecord._originalIndex;
+            childRecord.doctype = record.table_name || parentData.table_name;
+            childRecord.sort_order = idx++;
+          } else {
+            childRecord.parent_id = insertedId;
+            childRecord.parent_doctype = doctype;
+            childRecord.parent_field = child.fieldname;
+            childRecord.idx = idx++;
+            childRecord.status = childMeta.initial_status || 'Active';
+          }
           
-          if (childMeta.auto_code) {
+          if (childMeta.auto_code && !childRecord.code && childTableName !== 'sys_docfield') {
              childRecord.code = await this.namingEngine.generateCode(childMeta, childRecord, childTableName);
           }
 
@@ -227,9 +235,16 @@ class CRUDEngine {
         const childMeta = await this.metaEngine.getDocType(field.options);
         const childTableName = childMeta.table_name;
         
-        const childRecords = await this.dbEngine.query(childTableName)
-          .where({ parent_id: record.id, parent_field: field.fieldname, status: 'Saved' })
-          .orderBy('idx', 'asc');
+        let childRecords;
+        if (childTableName === 'sys_docfield') {
+          childRecords = await this.dbEngine.query(childTableName)
+            .where({ doctype: record.table_name })
+            .orderBy('sort_order', 'asc');
+        } else {
+          childRecords = await this.dbEngine.query(childTableName)
+            .where({ parent_id: record.id, parent_field: field.fieldname, status: 'Saved' })
+            .orderBy('idx', 'asc');
+        }
           
         record[field.fieldname] = childRecords;
       } catch (err) {
@@ -490,25 +505,36 @@ class CRUDEngine {
 
       // 4. Update children
       for (const child of childrenData) {
-        if (!child.options) continue;
-        const childMeta = await this.metaEngine.getDocType(child.options);
+        if (!child.options || child.options.length === 0) continue;
+        const childDocTypeName = Array.isArray(child.options) ? child.options[0] : child.options;
+        const childMeta = await this.metaEngine.getDocType(childDocTypeName);
         const childTableName = childMeta.table_name;
         
-        await trx(childTableName).where({ parent_id: existingDoc.id, parent_field: child.fieldname }).del();
+        if (childTableName === 'sys_docfield') {
+          await trx(childTableName).where({ doctype: existingDoc.table_name }).del();
+        } else {
+          await trx(childTableName).where({ parent_id: existingDoc.id, parent_field: child.fieldname }).del();
+        }
         
         let idx = 0;
         for (const row of child.records) {
-          const childRecord = {
-            ...row,
-            parent_id: existingDoc.id,
-            parent_doctype: doctype,
-            parent_field: child.fieldname,
-            idx: idx++,
-            status: childMeta.initial_status || 'Active',
-          };
+          const childRecord = { ...row };
           delete childRecord.id;
+          delete childRecord._ui_id;
+          delete childRecord._originalIndex;
+
+          if (childTableName === 'sys_docfield') {
+            childRecord.doctype = updateData.table_name || existingDoc.table_name;
+            childRecord.sort_order = idx++;
+          } else {
+            childRecord.parent_id = existingDoc.id;
+            childRecord.parent_doctype = doctype;
+            childRecord.parent_field = child.fieldname;
+            childRecord.idx = idx++;
+            childRecord.status = childMeta.initial_status || 'Active';
+          }
           
-          if (childMeta.auto_code && !childRecord.code) {
+          if (childMeta.auto_code && !childRecord.code && childTableName !== 'sys_docfield') {
              childRecord.code = await this.namingEngine.generateCode(childMeta, childRecord, childTableName);
           }
           

@@ -4,8 +4,10 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { GripVertical, Plus, Edit2, Trash2 } from 'lucide-react';
 import Icon from '../ui/Icon';
 import ChildFormModal from './ChildFormModal';
+import FieldSettingsModal from './FieldSettingsModal';
 import { useTranslation } from '@/hooks/useTranslation';
 import apiClient from '../../lib/api.client';
+import { Button } from '../ui/Button';
 
 export default function TableDocField({ fieldname, label, options, control, register, readOnly = false }) {
   const field = { fieldname, label, options }; // compatibility with previous TableField code
@@ -13,6 +15,7 @@ export default function TableDocField({ fieldname, label, options, control, regi
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
   const [columns, setColumns] = useState([]);
+  const [deleteConfirmState, setDeleteConfirmState] = useState({ isOpen: false, targetIndices: [] });
   
   const { fields, append, update, remove, move } = useFieldArray({
     control,
@@ -54,8 +57,17 @@ export default function TableDocField({ fieldname, label, options, control, regi
 
   const handleAdd = () => {
     if (readOnly) return;
-    setEditingIndex(null);
-    setIsModalOpen(true);
+    if (childDocType === 'sys_docfield' || field.fieldname === 'fields') {
+      append({
+        id: crypto.randomUUID(),
+        fieldname: `field_${Math.random().toString(36).substring(2, 7)}`,
+        label: t('New Field'),
+        fieldtype: 'Data'
+      });
+    } else {
+      setEditingIndex(null);
+      setIsModalOpen(true);
+    }
   };
 
   const handleEdit = (index) => {
@@ -73,30 +85,12 @@ export default function TableDocField({ fieldname, label, options, control, regi
 
   const handleDelete = (index) => {
     if (readOnly) return;
-    if (confirm(t('Are you sure you want to delete this row?'))) {
-      remove(index);
-    }
+    setDeleteConfirmState({ isOpen: true, targetIndices: [index] });
   };
 
   return (
-    <div className="w-full flex flex-col gap-2">
-      <div className="flex justify-between items-center bg-(--color-section-header-bg) px-3 py-2 rounded-t-md border border-(--color-border) border-b-0">
-        <label className="text-sm font-semibold text-(--color-section-header-text)">
-          {t(field.label)}
-        </label>
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={handleAdd}
-            className="flex items-center gap-1 px-2 py-1 bg-(--color-primary) text-white text-xs font-medium rounded hover:bg-(--color-primary-hover) transition-colors"
-          >
-            <Plus size={14} />
-            {t('Add Row')}
-          </button>
-        )}
-      </div>
-
-      <div className="border border-(--color-border) rounded-b-md overflow-x-auto bg-(--color-surface)">
+    <div className="w-full flex flex-col">
+      <div className="border border-(--color-border) rounded-md overflow-x-auto bg-(--color-surface)">
         <DragDropContext onDragEnd={handleDragEnd}>
           <Droppable droppableId={`droppable-${field.fieldname}`}>
             {(provided) => (
@@ -111,8 +105,8 @@ export default function TableDocField({ fieldname, label, options, control, regi
                     <th className="px-4 py-2 font-medium">{t('Label')}</th>
                     <th className="px-4 py-2 font-medium">{t('Field Name')}</th>
                     <th className="px-4 py-2 font-medium">{t('Type')}</th>
-                    <th className="w-16 px-4 py-2 font-medium text-center">{t('Req')}</th>
-                    {!readOnly && <th className="w-20 px-4 py-2 text-right">{t('Actions')}</th>}
+                    <th className="w-16 px-4 py-2 font-medium text-center">{t('REQ')}</th>
+                    {!readOnly && <th className="w-20 px-4 py-2 text-right">{t('ACTIONS')}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -163,7 +157,7 @@ export default function TableDocField({ fieldname, label, options, control, regi
                           <td className="px-2 py-1.5">
                             <input 
                               type="text" 
-                              placeholder={t('field_name')}
+                              placeholder={t('Field Name')}
                               className="w-full border rounded-md p-1.5 text-sm bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 focus:ring-1 focus:ring-blue-500 transition-colors"
                               {...register(`${field.fieldname}.${index}.fieldname`)}
                             />
@@ -172,7 +166,7 @@ export default function TableDocField({ fieldname, label, options, control, regi
                           {/* TYPE Column */}
                           <td className="px-2 py-1.5">
                             <select 
-                              className={`w-full border rounded-md p-1.5 text-sm bg-gray-50 dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 font-semibold transition-colors ${
+                              className={`w-full border border-gray-200/60 dark:border-gray-700/60 rounded-md p-1.5 text-sm bg-gray-50 dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 font-semibold transition-colors ${
                                 item.fieldtype === 'Section Break' ? 'text-blue-600' :
                                 item.fieldtype === 'Column Break' ? 'text-green-600' :
                                 item.fieldtype === 'Tab Break' ? 'text-purple-600' : 'text-gray-700 dark:text-gray-200'
@@ -235,6 +229,20 @@ export default function TableDocField({ fieldname, label, options, control, regi
                     );
                   })}
                   {provided.placeholder}
+                  {!readOnly && (
+                    <tr className="border-t border-(--color-border) bg-(--color-surface)">
+                      <td colSpan={6} className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={handleAdd}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/[0.05] dark:bg-blue-500/[0.1] text-blue-600 dark:text-blue-400 border border-blue-500/20 dark:border-blue-500/30 text-xs font-semibold rounded-md hover:bg-blue-500/[0.12] dark:hover:bg-blue-500/[0.2] transition-colors"
+                        >
+                          <Plus size={14} />
+                          {t('Add Row')}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             )}
@@ -242,13 +250,59 @@ export default function TableDocField({ fieldname, label, options, control, regi
         </DragDropContext>
       </div>
 
-      <ChildFormModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        childDocType={childDocType}
-        initialData={editingIndex !== null ? fields[editingIndex] : null}
-        onSave={handleSaveModal}
-      />
+      {childDocType === 'sys_docfield' || field.fieldname === 'fields' ? (
+        <FieldSettingsModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          initialData={editingIndex !== null ? fields[editingIndex] : null}
+          onSave={handleSaveModal}
+        />
+      ) : (
+        <ChildFormModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          childDocType={childDocType}
+          initialData={editingIndex !== null ? fields[editingIndex] : null}
+          onSave={handleSaveModal}
+        />
+      )}
+
+      {deleteConfirmState.isOpen && (
+        <div 
+          onClick={() => setDeleteConfirmState({ isOpen: false, targetIndices: [] })}
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-(--color-surface) rounded-lg shadow-xl w-full max-w-md p-6 border border-(--color-border) flex flex-col gap-6 animate-in zoom-in-95 duration-200"
+          >
+            <p className="text-sm font-medium text-(--color-text)">
+              {t('Are your sure you want to delete this data ?', 'Are your sure you want to delete this data ?')}
+            </p>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                variant="secondary"
+                onClick={() => setDeleteConfirmState({ isOpen: false, targetIndices: [] })}
+              >
+                {t('Cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  if (deleteConfirmState.targetIndices && deleteConfirmState.targetIndices.length > 0) {
+                    const sortedIndices = [...deleteConfirmState.targetIndices].sort((a, b) => b - a);
+                    sortedIndices.forEach(idx => remove(idx));
+                  }
+                  setDeleteConfirmState({ isOpen: false, targetIndices: [] });
+                }}
+              >
+                {t('Delete')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

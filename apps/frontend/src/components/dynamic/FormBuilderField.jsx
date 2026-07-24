@@ -53,7 +53,7 @@ export default function FormBuilderField({ fieldname, label, options, control, r
           </div>
         )}
         {activeTab === 'setup' && (
-          <div className="w-full">
+          <div className="w-full p-4">
             <TableDocField 
               fieldname={fieldname} 
               label={label} 

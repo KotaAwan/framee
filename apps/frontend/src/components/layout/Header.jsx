@@ -29,12 +29,24 @@ export default function Header({ sidebarOpen, setSidebarOpen }) {
   useEffect(() => {
     const savedTheme = localStorage.getItem('framee_theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
+    document.documentElement.style.colorScheme = savedTheme;
+    if (savedTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     setTheme(savedTheme);
   }, []);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', newTheme);
+    document.documentElement.style.colorScheme = newTheme;
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     localStorage.setItem('framee_theme', newTheme);
     setTheme(newTheme);
   };

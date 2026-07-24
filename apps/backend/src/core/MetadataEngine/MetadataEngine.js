@@ -49,18 +49,18 @@ class MetadataEngine {
 
     logger.debug(`Metadata Cache MISS for ${name}. Loading from DB...`);
 
-    // 2. Fetch from DB
     let doctype;
     if (typeof name === 'number' || !isNaN(Number(name))) {
-      doctype = await this.dbEngine.query('sys_doctype')
-        .where({ id: Number(name), status: 'Saved' })
+      doctype = await this.dbEngine.query('sys_doctype', { includeDeleted: true })
+        .where({ id: Number(name) })
+        .whereNot('status', 'Deleted')
         .first();
     } else {
-      doctype = await this.dbEngine.query('sys_doctype')
+      doctype = await this.dbEngine.query('sys_doctype', { includeDeleted: true })
         .where(function() {
-          this.where('slug', name).orWhere('table_name', name);
+          this.where('slug', name).orWhere('table_name', name).orWhere('name', name);
         })
-        .andWhere({ status: 'Saved' })
+        .whereNot('status', 'Deleted')
         .first();
     }
 

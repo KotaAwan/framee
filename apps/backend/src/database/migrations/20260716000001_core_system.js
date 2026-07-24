@@ -78,6 +78,8 @@ export async function up(knex) {
     table.integer('module_id').unsigned().nullable();
     table.string('icon', 50).nullable();
     table.string('auto_code', 150).nullable(); // Previously autoname
+    table.string('type', 50).defaultTo('Standard');
+    table.integer('parent_id').unsigned().nullable();
     table.boolean('is_tree').defaultTo(false);
     table.boolean('is_single').defaultTo(false);
     table.boolean('is_deleted').defaultTo(false);
@@ -92,11 +94,16 @@ export async function up(knex) {
     table.string('fieldname', 100).notNullable();
     table.string('fieldtype', 50).notNullable();
     table.string('options', 255).nullable();
+    table.string('placeholder', 255).nullable();
+    table.string('doc_url', 500).nullable();
+    table.string('width', 50).nullable();
     table.string('icon', 50).nullable();
     table.text('default_value').nullable();
     table.boolean('is_required').defaultTo(false);
     table.boolean('is_read_only').defaultTo(false);
     table.boolean('is_hidden').defaultTo(false);
+    table.boolean('is_unique').defaultTo(false);
+    table.boolean('is_indexed').defaultTo(false);
     table.boolean('in_list').defaultTo(false);
     table.boolean('in_filter').defaultTo(false);
     table.boolean('in_search').defaultTo(false);

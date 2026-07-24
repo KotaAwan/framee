@@ -140,11 +140,11 @@ export default function FormField({ doctype, field, register, control, error, re
               className={`${baseInput} appearance-none pr-8`}
               disabled={readOnly}
             >
-              <option value="">{t('Select', 'Select')} {t(label, label)}...</option>
+              <option value="" className="bg-white dark:bg-[#282f3f] text-gray-900 dark:text-gray-100">{t('Select', 'Select')} {t(label, label)}...</option>
               {options && (Array.isArray(options) ? options : options.split('\n')).map(opt => {
                 const optStr = typeof opt === 'string' ? opt.trim() : opt;
                 if (!optStr) return null;
-                return <option key={optStr} value={optStr}>{t(optStr, optStr)}</option>
+                return <option key={optStr} value={optStr} className="bg-white dark:bg-[#282f3f] text-gray-900 dark:text-gray-100">{t(optStr, optStr)}</option>
               })}
             </select>
             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-(--color-muted)">
@@ -179,9 +179,9 @@ export default function FormField({ doctype, field, register, control, error, re
                   className={`${baseInput} appearance-none pr-8`}
                   disabled={readOnly}
                 >
-                  <option value="">{t('Select', 'Select')} {t(label, label)}...</option>
+                  <option value="" className="bg-white dark:bg-[#282f3f] text-gray-900 dark:text-gray-100">{t('Select', 'Select')} {t(label, label)}...</option>
                   {linkOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{t(opt.label, opt.label)}</option>
+                    <option key={opt.value} value={opt.value} className="bg-white dark:bg-[#282f3f] text-gray-900 dark:text-gray-100">{t(opt.label, opt.label)}</option>
                   ))}
                 </select>
               )}

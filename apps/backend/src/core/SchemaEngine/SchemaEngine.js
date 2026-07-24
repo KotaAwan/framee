@@ -26,19 +26,78 @@ class SchemaEngine {
   }
 
   async _handleDocTypeChange(payload, context) {
-    if (!payload || !payload.name) return;
+    const doc = payload?.doc || payload;
+    const doctypeName = doc?.name || doc?.table_name || doc?.slug;
+    if (!doctypeName) return;
     try {
-      await this.syncTable(payload.name);
+      await this.syncTable(doctypeName);
+
+      // Seed standard workflow for Standard DocTypes
+      const docTypeKind = doc?.type || 'Standard';
+      if (docTypeKind === 'Standard') {
+        await this._seedStandardWorkflow(doc);
+      }
     } catch (err) {
-      logger.error(`Error in SchemaEngine on DocType change for ${payload.name}:`, err);
+      logger.error(`Error in SchemaEngine on DocType change for ${doctypeName}:`, err);
+    }
+  }
+
+  async _seedStandardWorkflow(doc) {
+    try {
+      const knex = this.dbEngine.getRawConnection();
+      const doctypeTarget = doc.table_name || doc.slug || doc.name;
+      if (!doctypeTarget) return;
+      
+      // Check if workflow transitions already exist for this doctype
+      const existing = await knex('sys_workflow').where({ doctype: doctypeTarget }).first();
+      if (existing) return;
+
+      const namingEngine = Container.resolve('NamingEngine');
+      const sysWfMeta = await this.metaEngine.getDocType('sys_workflow').catch(() => null);
+
+      const defaultTransitions = [
+        { from_state: 'New', action: 'Save', to_state: 'Saved', log_status: 'Created' },
+        { from_state: 'Saved', action: 'Unlock', to_state: 'Draft', log_status: 'Unlocked' },
+        { from_state: 'Draft', action: 'Lock', to_state: 'Saved', log_status: 'Locked' },
+        { from_state: 'Draft', action: 'Update', to_state: 'Saved', log_status: 'Updated' },
+        { from_state: 'Draft', action: 'Delete', to_state: 'Deleted', log_status: 'Deleted' },
+      ];
+
+      for (const tr of defaultTransitions) {
+        const record = {
+          name: `${doc.name || doctypeTarget}: ${tr.from_state} → ${tr.to_state}`,
+          doctype: doctypeTarget,
+          from_state: tr.from_state,
+          to_state: tr.to_state,
+          action: tr.action,
+          log_status: tr.log_status,
+          allow_roles: JSON.stringify([1]),
+          is_deleted: false,
+          status: 'Saved'
+        };
+        
+        if (sysWfMeta && sysWfMeta.auto_code) {
+          record.code = await namingEngine.generateCode(sysWfMeta, record, 'sys_workflow');
+        }
+
+        await knex('sys_workflow').insert(record);
+      }
+      logger.info(`Seeded standard workflow transitions for DocType ${doctypeTarget}`);
+    } catch (err) {
+      logger.warn(`Failed to seed standard workflow for ${doc.name}: ${err.message}`);
     }
   }
 
   async _handleDocFieldChange(payload, context) {
-    if (!payload || !payload.doctype) return;
+    const doc = payload?.doc || payload;
+    const doctypeRef = doc?.doctype;
+    if (!doctypeRef) return;
     try {
-      const doctype = await this.dbEngine.query('sys_doctype')
-        .where({ table_name: payload.doctype })
+      const doctype = await this.dbEngine.query('sys_doctype', { includeDeleted: true })
+        .where(function() {
+          this.where('table_name', doctypeRef).orWhere('slug', doctypeRef).orWhere('name', doctypeRef);
+        })
+        .whereNot('status', 'Deleted')
         .first();
       
       if (doctype) {
@@ -46,11 +105,13 @@ class SchemaEngine {
         const CACHE_PREFIX = 'framee:meta';
         const cacheEngine = Container.resolve('CacheEngine');
         await cacheEngine.del(`${CACHE_PREFIX}:${doctype.name}`);
+        if (doctype.table_name) await cacheEngine.del(`${CACHE_PREFIX}:${doctype.table_name}`);
+        if (doctype.slug) await cacheEngine.del(`${CACHE_PREFIX}:${doctype.slug}`);
         
         await this.syncTable(doctype.name);
       }
     } catch (err) {
-      logger.error(`Error in SchemaEngine on DocField change for doctype ${payload.doctype}:`, err);
+      logger.error(`Error in SchemaEngine on DocField change for doctype ${doctypeRef}:`, err);
     }
   }
 
@@ -99,7 +160,9 @@ class SchemaEngine {
         table.string(fieldname, 500); // URL or path
         break;
       case 'Section Break':
+      case 'Tab Break':
       case 'Column Break':
+      case 'Table':
       case 'HTML':
         break;
       default:
@@ -138,45 +201,57 @@ class SchemaEngine {
   async _createTable(knex, tableName, meta) {
     logger.info(`Creating table: ${tableName}`);
     await knex.schema.createTable(tableName, (table) => {
-      // 1. Standard Columns
-      table.uuid('id').primary();
+      // 1. Standard Columns (id, code)
+      table.increments('id').unsigned().primary();
+      table.string('code', 100).nullable();
       
-      // 2. Dynamic DocFields
-      for (const field of meta.fields) {
+      // 2. Dynamic DocFields (Excludes Section Break, Tab Break, Column Break, Table)
+      for (const field of meta.fields || []) {
         this._mapFieldType(table, field);
       }
       
-      // 3. Metadata & Lifecycle Columns
+      // 3. Status & Deletion Flags
+      table.boolean('is_deleted').defaultTo(false);
       table.string('status', 50).defaultTo('Active');
-      table.uuid('created_by').nullable();
-      table.uuid('updated_by').nullable();
-      table.datetime('created_at').defaultTo(knex.fn.now());
-      table.datetime('updated_at').defaultTo(knex.fn.now());
-      
-      if (meta.has_lifecycle) {
-        table.string('workflow_state', 100).nullable();
-        table.uuid('submitted_by').nullable();
-        table.datetime('submitted_at').nullable();
-        table.uuid('cancelled_by').nullable();
-        table.datetime('cancelled_at').nullable();
-        table.string('cancel_reason', 255).nullable();
-      }
 
-      table.datetime('deleted_at').nullable();
-      table.uuid('deleted_by').nullable();
-      table.string('delete_reason', 255).nullable();
-
-      // 4. Child Table Columns
-      table.uuid('parent_id').nullable();
-      table.string('parent_doctype', 100).nullable();
-      table.string('parent_field', 100).nullable();
-      table.integer('idx').defaultTo(0);
-
-      // 5. Indexes
+      // 4. Index on Status
       table.index(['status'], `idx_${tableName}_status`);
-      table.index(['parent_id'], `idx_${tableName}_parent`);
     });
     logger.info(`Table ${tableName} created successfully.`);
+
+    // 5. Create _logs Table
+    const logsTableName = `${tableName}_logs`;
+    const logsExists = await knex.schema.hasTable(logsTableName);
+    if (!logsExists) {
+      await knex.schema.createTable(logsTableName, (t) => {
+        t.increments('id').unsigned().primary();
+        t.integer('doc_id').unsigned().notNullable();
+        t.string('status', 30).nullable();
+        t.string('content', 100).nullable();
+        t.integer('created_by').unsigned().nullable();
+        t.timestamp('created_at').defaultTo(knex.fn.now());
+      });
+      logger.info(`Table ${logsTableName} created successfully.`);
+    }
+
+    // 6. Create _version Table
+    const versionTableName = `${tableName}_version`;
+    const versionExists = await knex.schema.hasTable(versionTableName);
+    if (!versionExists) {
+      try {
+        await knex.raw(`CREATE TABLE ?? SELECT * FROM ?? WHERE 1=0`, [versionTableName, tableName]);
+        // Add backup_by, backup_at, doc_id if missing
+        const vCols = await knex(versionTableName).columnInfo();
+        await knex.schema.alterTable(versionTableName, (t) => {
+          if (!vCols.doc_id) t.integer('doc_id').unsigned().nullable();
+          if (!vCols.backup_by) t.integer('backup_by').unsigned().nullable();
+          if (!vCols.backup_at) t.datetime('backup_at').nullable();
+        });
+        logger.info(`Table ${versionTableName} created successfully.`);
+      } catch (e) {
+        logger.warn(`Failed to create version table ${versionTableName}: ${e.message}`);
+      }
+    }
   }
 
   async _alterTable(knex, tableName, meta) {
@@ -185,19 +260,14 @@ class SchemaEngine {
     const columns = await knex(tableName).columnInfo();
     const existingCols = Object.keys(columns).map(c => c.toLowerCase());
     
-    const uiOnlyTypes = ['Section Break', 'Column Break', 'HTML'];
+    const uiOnlyTypes = ['Section Break', 'Tab Break', 'Column Break', 'Table', 'HTML'];
 
     await knex.schema.alterTable(tableName, (table) => {
-      if (!existingCols.includes('parent_id')) table.uuid('parent_id').nullable();
-      if (!existingCols.includes('parent_doctype')) table.string('parent_doctype', 100).nullable();
-      if (!existingCols.includes('parent_field')) table.string('parent_field', 100).nullable();
-      if (!existingCols.includes('idx')) table.integer('idx').defaultTo(0);
+      if (!existingCols.includes('code')) table.string('code', 100).nullable();
+      if (!existingCols.includes('is_deleted')) table.boolean('is_deleted').defaultTo(false);
+      if (!existingCols.includes('status')) table.string('status', 50).defaultTo('Active');
 
-      if (meta.has_lifecycle) {
-        if (!existingCols.includes('workflow_state')) table.string('workflow_state', 100).nullable();
-      }
-
-      for (const field of meta.fields) {
+      for (const field of meta.fields || []) {
         if (uiOnlyTypes.includes(field.fieldtype)) continue;
 
         const colName = field.fieldname.toLowerCase();
